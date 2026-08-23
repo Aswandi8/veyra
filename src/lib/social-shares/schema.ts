@@ -7,8 +7,39 @@ import { z } from "zod";
 export const SOCIAL_SHARE_STATUSES = ["DRAFT", "ACTIVE", "ARCHIVED"] as const;
 
 // ============================================================
-// HELPERS
+// URL HELPERS
 // ============================================================
+
+function isPrivateIpv4(hostname: string): boolean {
+  const parts = hostname.split(".").map(Number);
+
+  if (
+    parts.length !== 4 ||
+    parts.some((value) => !Number.isInteger(value) || value < 0 || value > 255)
+  ) {
+    return false;
+  }
+
+  const [a, b] = parts;
+
+  if (a === 10 || a === 127 || a === 0) {
+    return true;
+  }
+
+  if (a === 169 && b === 254) {
+    return true;
+  }
+
+  if (a === 172 && b >= 16 && b <= 31) {
+    return true;
+  }
+
+  if (a === 192 && b === 168) {
+    return true;
+  }
+
+  return false;
+}
 
 function isHttpUrl(value: string): boolean {
   try {
@@ -19,6 +50,48 @@ function isHttpUrl(value: string): boolean {
     return false;
   }
 }
+
+function isRemoteMediaUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return false;
+    }
+
+    if (url.username || url.password) {
+      return false;
+    }
+
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+
+    if (
+      !hostname ||
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal")
+    ) {
+      return false;
+    }
+
+    if (isPrivateIpv4(hostname)) {
+      return false;
+    }
+
+    if (hostname === "::1" || hostname === "[::1]") {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================
+// DURATION HELPERS
+// ============================================================
 
 function isNonNegativeInteger(value: string): boolean {
   if (!value) {
@@ -51,7 +124,7 @@ function isDisplayHour(value: string): boolean {
 }
 
 // ============================================================
-// URL
+// GENERIC URL
 // ============================================================
 
 const requiredHttpUrlSchema = z
@@ -63,12 +136,25 @@ const requiredHttpUrlSchema = z
     message: "Enter a valid http or https URL",
   });
 
-const optionalHttpUrlSchema = z
+// ============================================================
+// MEDIA URL
+// ============================================================
+
+const requiredRemoteMediaUrlSchema = z
   .string()
   .trim()
-  .max(2048, "URL must not exceed 2048 characters")
-  .refine((value) => !value || isHttpUrl(value), {
-    message: "Enter a valid http or https URL",
+  .min(1, "Media URL is required")
+  .max(2048, "Media URL must not exceed 2048 characters")
+  .refine(isRemoteMediaUrl, {
+    message: "Enter a public http or https media URL",
+  });
+
+const optionalRemoteMediaUrlSchema = z
+  .string()
+  .trim()
+  .max(2048, "Media URL must not exceed 2048 characters")
+  .refine((value) => !value || isRemoteMediaUrl(value), {
+    message: "Enter a public http or https media URL",
   });
 
 // ============================================================
@@ -106,6 +192,10 @@ export const socialSharesQuerySchema = z.object({
 
   website: z.string().trim().min(1).optional(),
 });
+
+// ============================================================
+// TYPES
+// ============================================================
 
 export type SocialSharesQuery = z.infer<typeof socialSharesQuerySchema>;
 
@@ -145,15 +235,17 @@ export const socialShareFormSchema = z.object({
     .trim()
     .max(10000, "Description must not exceed 10000 characters"),
 
-  videoUrl: requiredHttpUrlSchema,
+  /*
+   * Provider agnostic:
+   *
+   * Cloudinary / R2 / S3 / Bunny /
+   * arbitrary public CDN.
+   */
+  videoUrl: requiredRemoteMediaUrlSchema,
 
-  thumbnail: requiredHttpUrlSchema,
+  thumbnail: requiredRemoteMediaUrlSchema,
 
-  shareThumbnail: optionalHttpUrlSchema,
-
-  // --------------------------------------------------------
-  // ACTUAL DURATION
-  // --------------------------------------------------------
+  shareThumbnail: optionalRemoteMediaUrlSchema,
 
   actualHours: durationHourSchema,
 
@@ -161,20 +253,15 @@ export const socialShareFormSchema = z.object({
 
   actualSeconds: minuteSecondSchema,
 
-  // --------------------------------------------------------
-  // DISPLAY DURATION
-  // --------------------------------------------------------
-
   displayHours: displayHourSchema,
 
   displayMinutes: minuteSecondSchema,
 
   displaySeconds: minuteSecondSchema,
 
-  // --------------------------------------------------------
-  // DESTINATION
-  // --------------------------------------------------------
-
+  /*
+   * Target redirect is not fetched as media.
+   */
   targetUrl: requiredHttpUrlSchema,
 
   status: z.enum(SOCIAL_SHARE_STATUSES),
