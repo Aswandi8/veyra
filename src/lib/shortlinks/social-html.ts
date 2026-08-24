@@ -5,9 +5,11 @@ interface SocialHtmlOptions {
   canonicalUrl: string;
 }
 
-interface SocialImage {
-  url: string | null;
-  mimeType: string | null;
+export interface ShortLinkSocialMedia {
+  sourceImageUrl: string | null;
+  sourceImageMimeType: string | null;
+  videoUrl: string | null;
+  videoMimeType: string | null;
 }
 
 function cleanText(
@@ -34,10 +36,7 @@ function escapeHtml(value: string): string {
 
 function normalizeHttpUrl(value: string | null | undefined): string | null {
   const normalized = value?.trim();
-
-  if (!normalized) {
-    return null;
-  }
+  if (!normalized) return null;
 
   try {
     const url = new URL(normalized);
@@ -57,10 +56,7 @@ function getExtension(value: string | null): string | null {
 
   try {
     const pathname = new URL(value).pathname.toLowerCase();
-
-    const match = pathname.match(/\.([a-z0-9]+)$/);
-
-    return match?.[1] ?? null;
+    return pathname.match(/\.([a-z0-9]+)$/)?.[1] ?? null;
   } catch {
     return null;
   }
@@ -71,22 +67,16 @@ function inferImageMimeType(url: string | null): string | null {
     case "jpg":
     case "jpeg":
       return "image/jpeg";
-
     case "png":
       return "image/png";
-
     case "webp":
       return "image/webp";
-
     case "gif":
       return "image/gif";
-
     case "avif":
       return "image/avif";
-
     case "svg":
       return "image/svg+xml";
-
     default:
       return null;
   }
@@ -96,16 +86,12 @@ function inferVideoMimeType(url: string | null): string | null {
   switch (getExtension(url)) {
     case "mp4":
       return "video/mp4";
-
     case "webm":
       return "video/webm";
-
     case "mov":
       return "video/quicktime";
-
     case "m4v":
       return "video/x-m4v";
-
     default:
       return null;
   }
@@ -134,56 +120,43 @@ function createCloudinarySocialJpeg(value: string): string {
   return url.toString();
 }
 
-function getSocialImage(shortLink: PublicShortLink): SocialImage {
-  const sourceUrl = normalizeHttpUrl(shortLink.thumbnailUrl);
+export function getShortLinkSocialMedia(
+  shortLink: PublicShortLink,
+): ShortLinkSocialMedia {
+  const originalImageUrl = normalizeHttpUrl(shortLink.thumbnailUrl);
 
-  if (!sourceUrl) {
-    return {
-      url: null,
-      mimeType: null,
-    };
-  }
-
-  const sourceMime =
+  let sourceImageUrl = originalImageUrl;
+  let sourceImageMimeType =
     shortLink.thumbnailMimeType?.trim().toLowerCase() ||
-    inferImageMimeType(sourceUrl);
+    inferImageMimeType(originalImageUrl);
 
-  const isSvg =
-    sourceMime === "image/svg+xml" || getExtension(sourceUrl) === "svg";
+  const svg =
+    sourceImageMimeType === "image/svg+xml" ||
+    getExtension(originalImageUrl) === "svg";
 
-  /*
-   * SVG Cloudinary:
-   *
-   * Asset asli tetap SVG.
-   * Social delivery menggunakan derived JPEG.
-   */
-  if (isSvg && isCloudinaryUploadImage(sourceUrl)) {
-    return {
-      url: createCloudinarySocialJpeg(sourceUrl),
+  if (originalImageUrl && svg && isCloudinaryUploadImage(originalImageUrl)) {
+    sourceImageUrl = createCloudinarySocialJpeg(originalImageUrl);
 
-      mimeType: "image/jpeg",
-    };
+    sourceImageMimeType = "image/jpeg";
+  } else if (svg) {
+    sourceImageUrl = null;
+    sourceImageMimeType = null;
   }
 
-  /*
-   * SVG di provider lain tidak otomatis
-   * kita ubah karena Veyra tidak boleh
-   * mengasumsikan transform API provider.
-   *
-   * Lebih aman tidak mengirim og:image
-   * daripada menjanjikan SVG yang tidak
-   * kompatibel di sebagian crawler.
-   */
-  if (isSvg) {
-    return {
-      url: null,
-      mimeType: null,
-    };
-  }
+  const videoUrl =
+    shortLink.previewType === "VIDEO"
+      ? normalizeHttpUrl(shortLink.previewVideoUrl)
+      : null;
+
+  const videoMimeType =
+    shortLink.previewVideoMimeType?.trim().toLowerCase() ||
+    inferVideoMimeType(videoUrl);
 
   return {
-    url: sourceUrl,
-    mimeType: sourceMime,
+    sourceImageUrl,
+    sourceImageMimeType,
+    videoUrl,
+    videoMimeType,
   };
 }
 
@@ -193,14 +166,9 @@ function meta(
   value: string | null | undefined,
 ): string {
   const normalized = value?.trim();
+  if (!normalized) return "";
 
-  if (!normalized) {
-    return "";
-  }
-
-  return `<meta ${attribute}="${escapeHtml(key)}" content="${escapeHtml(
-    normalized,
-  )}">`;
+  return `<meta ${attribute}="${escapeHtml(key)}" content="${escapeHtml(normalized)}">`;
 }
 
 function numberMeta(property: string, value: number | null): string {
@@ -209,6 +177,10 @@ function numberMeta(property: string, value: number | null): string {
   }
 
   return meta("property", property, String(value));
+}
+
+function getGeneratedPreviewUrl(canonicalUrl: string): string {
+  return `${canonicalUrl.replace(/\/+$/, "")}/preview`;
 }
 
 export function createShortLinkSocialHtml({
@@ -221,18 +193,14 @@ export function createShortLinkSocialHtml({
 
   const description = cleanText(shortLink.description, title, 500);
 
-  const socialImage = getSocialImage(shortLink);
+  const media = getShortLinkSocialMedia(shortLink);
 
-  const videoUrl =
-    shortLink.previewType === "VIDEO"
-      ? normalizeHttpUrl(shortLink.previewVideoUrl)
+  const generatedPreviewUrl =
+    shortLink.previewType !== "NONE" && media.sourceImageUrl
+      ? getGeneratedPreviewUrl(normalizedCanonical)
       : null;
 
-  const videoMimeType =
-    shortLink.previewVideoMimeType?.trim().toLowerCase() ||
-    inferVideoMimeType(videoUrl);
-
-  const ogType = videoUrl ? "video.other" : "website";
+  const ogType = media.videoUrl ? "video.other" : "website";
 
   const tags = [
     meta("name", "robots", "noindex,nofollow,noarchive"),
@@ -245,50 +213,53 @@ export function createShortLinkSocialHtml({
 
     meta("property", "og:url", normalizedCanonical),
 
-    meta("property", "og:image", socialImage.url),
+    /*
+     * IMAGE dan VIDEO menggunakan generated social card.
+     */
+    meta("property", "og:image", generatedPreviewUrl),
 
-    meta("property", "og:image:secure_url", socialImage.url),
+    meta("property", "og:image:secure_url", generatedPreviewUrl),
 
-    meta("property", "og:image:type", socialImage.mimeType),
+    meta("property", "og:image:type", generatedPreviewUrl ? "image/png" : null),
+
+    numberMeta("og:image:width", generatedPreviewUrl ? 1200 : null),
+
+    numberMeta("og:image:height", generatedPreviewUrl ? 630 : null),
+
+    meta("property", "og:image:alt", generatedPreviewUrl ? title : null),
+
+    /*
+     * VIDEO tetap menyediakan file asli.
+     */
+    meta("property", "og:video", media.videoUrl),
+
+    meta("property", "og:video:secure_url", media.videoUrl),
+
+    meta("property", "og:video:type", media.videoMimeType),
 
     numberMeta(
-      "og:image:width",
-      socialImage.url ? shortLink.thumbnailWidth : null,
+      "og:video:width",
+      media.videoUrl ? shortLink.previewVideoWidth : null,
     ),
-
-    numberMeta(
-      "og:image:height",
-      socialImage.url ? shortLink.thumbnailHeight : null,
-    ),
-
-    meta("property", "og:image:alt", socialImage.url ? title : null),
-
-    meta("property", "og:video", videoUrl),
-
-    meta("property", "og:video:secure_url", videoUrl),
-
-    meta("property", "og:video:type", videoMimeType),
-
-    numberMeta("og:video:width", videoUrl ? shortLink.previewVideoWidth : null),
 
     numberMeta(
       "og:video:height",
-      videoUrl ? shortLink.previewVideoHeight : null,
+      media.videoUrl ? shortLink.previewVideoHeight : null,
     ),
 
     meta(
       "name",
       "twitter:card",
-      socialImage.url ? "summary_large_image" : "summary",
+      generatedPreviewUrl ? "summary_large_image" : "summary",
     ),
 
     meta("name", "twitter:title", title),
 
     meta("name", "twitter:description", description),
 
-    meta("name", "twitter:image", socialImage.url),
+    meta("name", "twitter:image", generatedPreviewUrl),
 
-    meta("name", "twitter:image:alt", socialImage.url ? title : null),
+    meta("name", "twitter:image:alt", generatedPreviewUrl ? title : null),
   ]
     .filter(Boolean)
     .join("\n");
