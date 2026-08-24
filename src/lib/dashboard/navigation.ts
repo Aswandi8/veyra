@@ -4,6 +4,7 @@ import {
   Globe2,
   KeyRound,
   LayoutDashboard,
+  Link2,
   ShieldCheck,
   Tags,
   Users,
@@ -19,22 +20,18 @@ export interface DashboardNavigationItem {
   label: string;
   href: string;
   icon: LucideIcon;
-
   permission?: string;
-
   permissionScope?: DashboardPermissionScope;
 }
 
 export interface DashboardNavigationGroup {
   label: string;
-
   items: readonly DashboardNavigationItem[];
 }
 
 export const DASHBOARD_NAVIGATION: readonly DashboardNavigationGroup[] = [
   {
     label: "Main",
-
     items: [
       {
         label: "Dashboard",
@@ -46,15 +43,12 @@ export const DASHBOARD_NAVIGATION: readonly DashboardNavigationGroup[] = [
 
   {
     label: "Management",
-
     items: [
       {
         label: "Users",
         href: "/users",
         icon: Users,
-
         permission: PERMISSIONS.user.read,
-
         permissionScope: "GLOBAL",
       },
 
@@ -62,9 +56,15 @@ export const DASHBOARD_NAVIGATION: readonly DashboardNavigationGroup[] = [
         label: "Roles",
         href: "/roles",
         icon: ShieldCheck,
-
         permission: PERMISSIONS.role.read,
+        permissionScope: "GLOBAL",
+      },
 
+      {
+        label: "ShortLinks",
+        href: "/shortlinks",
+        icon: Link2,
+        permission: PERMISSIONS.shortlink.read,
         permissionScope: "GLOBAL",
       },
 
@@ -72,9 +72,7 @@ export const DASHBOARD_NAVIGATION: readonly DashboardNavigationGroup[] = [
         label: "Websites",
         href: "/websites",
         icon: Globe2,
-
         permission: PERMISSIONS.website.read,
-
         permissionScope: "WEBSITE",
       },
     ],
@@ -82,24 +80,19 @@ export const DASHBOARD_NAVIGATION: readonly DashboardNavigationGroup[] = [
 
   {
     label: "Content",
-
     items: [
       {
         label: "Videos",
         href: "/videos",
         icon: Video,
-
         permission: PERMISSIONS.video.read,
-
         permissionScope: "WEBSITE",
       },
       {
         label: "Categories",
         href: "/categories",
         icon: Tags,
-
         permission: PERMISSIONS.category.read,
-
         permissionScope: "WEBSITE",
       },
     ],
@@ -107,15 +100,12 @@ export const DASHBOARD_NAVIGATION: readonly DashboardNavigationGroup[] = [
 
   {
     label: "Monitoring",
-
     items: [
       {
         label: "Analytics",
         href: "/analytics",
         icon: Activity,
-
         permission: PERMISSIONS.view.read,
-
         permissionScope: "WEBSITE",
       },
 
@@ -123,9 +113,7 @@ export const DASHBOARD_NAVIGATION: readonly DashboardNavigationGroup[] = [
         label: "Audit Logs",
         href: "/audit-logs",
         icon: FileClock,
-
         permission: PERMISSIONS.audit.read,
-
         permissionScope: "WEBSITE",
       },
     ],
@@ -133,15 +121,12 @@ export const DASHBOARD_NAVIGATION: readonly DashboardNavigationGroup[] = [
 
   {
     label: "System",
-
     items: [
       {
         label: "API Clients",
         href: "/api-clients",
         icon: KeyRound,
-
         permission: PERMISSIONS.apiClient.read,
-
         permissionScope: "WEBSITE",
       },
     ],

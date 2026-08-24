@@ -1,6 +1,7 @@
 export const ROLE_NAMES = {
   superAdmin: "SUPER_ADMIN",
   admin: "ADMIN",
+  websiteAdmin: "WEBSITE_ADMIN",
   teamLead: "TEAM_LEAD",
   contentManager: "CONTENT_MANAGER",
   editor: "EDITOR",
@@ -29,6 +30,13 @@ export const PERMISSIONS = {
     create: "website.create",
     update: "website.update",
     delete: "website.delete",
+  },
+
+  shortlink: {
+    read: "shortlink.read",
+    create: "shortlink.create",
+    update: "shortlink.update",
+    delete: "shortlink.delete",
   },
 
   member: {
