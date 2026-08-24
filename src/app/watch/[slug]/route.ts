@@ -12,16 +12,34 @@ interface RouteContext {
   }>;
 }
 
-function htmlResponse(html: string, status = 200) {
+function socialHtmlResponse(html: string, status = 200): Response {
   return new Response(html, {
     status,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
 
+      /*
+       * Social metadata dapat berubah setelah ShortLink diedit,
+       * jadi jangan cache permanen.
+       */
       "Cache-Control": "no-store, no-cache, must-revalidate",
 
-      "X-Robots-Tag": "noindex, nofollow, noarchive",
+      /*
+       * Tidak memakai X-Robots-Tag nofollow/noarchive di sini.
+       * Social crawler perlu bebas mengambil image/video metadata.
+       */
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+    },
+  });
+}
 
+function unavailableHtmlResponse(html: string, status: number): Response {
+  return new Response(html, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      "X-Robots-Tag": "noindex, nofollow, noarchive",
       "Referrer-Policy": "strict-origin-when-cross-origin",
     },
   });
@@ -43,7 +61,7 @@ function simpleHtml(title: string, message: string): string {
 </html>`;
 }
 
-function redirectResponse(destinationUrl: string) {
+function redirectResponse(destinationUrl: string): Response {
   return new Response(null, {
     status: 302,
     headers: {
@@ -51,6 +69,9 @@ function redirectResponse(destinationUrl: string) {
 
       "Cache-Control": "no-store, no-cache, must-revalidate",
 
+      /*
+       * Human redirect tidak perlu diindeks.
+       */
       "X-Robots-Tag": "noindex, nofollow, noarchive",
 
       "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -64,24 +85,22 @@ export async function GET(request: Request, context: RouteContext) {
   const normalizedSlug = slug.trim().toLowerCase();
 
   if (!normalizedSlug) {
-    return htmlResponse(simpleHtml("Not Found", "ShortLink not found."), 404);
+    return unavailableHtmlResponse(
+      simpleHtml("Not Found", "ShortLink not found."),
+      404,
+    );
   }
 
   try {
     /*
-     * Central API tetap melakukan visitor
-     * classification.
-     *
-     * Tidak ada duplicate classifier di Veyra.
+     * Central API tetap menjadi satu-satunya
+     * visitor classifier.
      */
     const tracking = await trackPublicShortLinkRequest(normalizedSlug, request);
 
     /*
-     * Hanya known SOCIAL crawler yang perlu
+     * Hanya known social crawler menerima
      * HTML metadata.
-     *
-     * HUMAN / BOT / UNKNOWN / regular crawler
-     * melanjutkan ke destination.
      */
     if (tracking.socialCrawler) {
       const shortLink = await getPublicShortLink(normalizedSlug);
@@ -95,21 +114,28 @@ export async function GET(request: Request, context: RouteContext) {
         canonicalUrl,
       });
 
-      return htmlResponse(html);
+      return socialHtmlResponse(html);
     }
 
+    /*
+     * HUMAN / BOT / UNKNOWN / regular crawler
+     * tetap menuju destination.
+     *
+     * Hanya HUMAN yang menaikkan clickCount
+     * karena keputusan itu dilakukan di Central API.
+     */
     return redirectResponse(tracking.destinationUrl);
   } catch (error) {
     if (error instanceof PublicShortLinkError) {
       if (error.status === 404) {
-        return htmlResponse(
+        return unavailableHtmlResponse(
           simpleHtml("Not Found", "This ShortLink does not exist."),
           404,
         );
       }
 
       if (error.status === 410) {
-        return htmlResponse(
+        return unavailableHtmlResponse(
           simpleHtml(
             "Link Unavailable",
             "This ShortLink is currently inactive.",
@@ -123,7 +149,7 @@ export async function GET(request: Request, context: RouteContext) {
       console.error("[WATCH SHORTLINK]", error);
     }
 
-    return htmlResponse(
+    return unavailableHtmlResponse(
       simpleHtml(
         "Link Unavailable",
         "This ShortLink is temporarily unavailable.",

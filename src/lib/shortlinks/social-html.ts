@@ -21,7 +21,6 @@ function cleanText(
     ?.replace(/[\u0000-\u001F\u007F]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-
   return (normalized || fallback).slice(0, maxLength);
 }
 
@@ -40,11 +39,7 @@ function normalizeHttpUrl(value: string | null | undefined): string | null {
 
   try {
     const url = new URL(normalized);
-
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return null;
-    }
-
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
     return url.toString();
   } catch {
     return null;
@@ -55,8 +50,9 @@ function getExtension(value: string | null): string | null {
   if (!value) return null;
 
   try {
-    const pathname = new URL(value).pathname.toLowerCase();
-    return pathname.match(/\.([a-z0-9]+)$/)?.[1] ?? null;
+    return (
+      new URL(value).pathname.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] ?? null
+    );
   } catch {
     return null;
   }
@@ -130,15 +126,14 @@ export function getShortLinkSocialMedia(
     shortLink.thumbnailMimeType?.trim().toLowerCase() ||
     inferImageMimeType(originalImageUrl);
 
-  const svg =
+  const isSvg =
     sourceImageMimeType === "image/svg+xml" ||
     getExtension(originalImageUrl) === "svg";
 
-  if (originalImageUrl && svg && isCloudinaryUploadImage(originalImageUrl)) {
+  if (originalImageUrl && isSvg && isCloudinaryUploadImage(originalImageUrl)) {
     sourceImageUrl = createCloudinarySocialJpeg(originalImageUrl);
-
     sourceImageMimeType = "image/jpeg";
-  } else if (svg) {
+  } else if (isSvg) {
     sourceImageUrl = null;
     sourceImageMimeType = null;
   }
@@ -172,9 +167,7 @@ function meta(
 }
 
 function numberMeta(property: string, value: number | null): string {
-  if (value === null || !Number.isFinite(value) || value <= 0) {
-    return "";
-  }
+  if (value === null || !Number.isFinite(value) || value <= 0) return "";
 
   return meta("property", property, String(value));
 }
@@ -190,7 +183,6 @@ export function createShortLinkSocialHtml({
   const normalizedCanonical = normalizeHttpUrl(canonicalUrl) ?? canonicalUrl;
 
   const title = cleanText(shortLink.title, "Watch", 200);
-
   const description = cleanText(shortLink.description, title, 500);
 
   const media = getShortLinkSocialMedia(shortLink);
@@ -203,45 +195,31 @@ export function createShortLinkSocialHtml({
   const ogType = media.videoUrl ? "video.other" : "website";
 
   const tags = [
-    meta("name", "robots", "noindex,nofollow,noarchive"),
+    /*
+     * Social crawler boleh mengikuti resource metadata/media,
+     * tetapi halaman ShortLink tidak perlu masuk search index.
+     */
+    meta("name", "robots", "noindex,follow"),
 
     meta("property", "og:title", title),
-
     meta("property", "og:description", description),
-
     meta("property", "og:type", ogType),
-
     meta("property", "og:url", normalizedCanonical),
 
-    /*
-     * IMAGE dan VIDEO menggunakan generated social card.
-     */
     meta("property", "og:image", generatedPreviewUrl),
-
     meta("property", "og:image:secure_url", generatedPreviewUrl),
-
     meta("property", "og:image:type", generatedPreviewUrl ? "image/png" : null),
-
     numberMeta("og:image:width", generatedPreviewUrl ? 1200 : null),
-
     numberMeta("og:image:height", generatedPreviewUrl ? 630 : null),
-
     meta("property", "og:image:alt", generatedPreviewUrl ? title : null),
 
-    /*
-     * VIDEO tetap menyediakan file asli.
-     */
     meta("property", "og:video", media.videoUrl),
-
     meta("property", "og:video:secure_url", media.videoUrl),
-
     meta("property", "og:video:type", media.videoMimeType),
-
     numberMeta(
       "og:video:width",
       media.videoUrl ? shortLink.previewVideoWidth : null,
     ),
-
     numberMeta(
       "og:video:height",
       media.videoUrl ? shortLink.previewVideoHeight : null,
@@ -252,13 +230,9 @@ export function createShortLinkSocialHtml({
       "twitter:card",
       generatedPreviewUrl ? "summary_large_image" : "summary",
     ),
-
     meta("name", "twitter:title", title),
-
     meta("name", "twitter:description", description),
-
     meta("name", "twitter:image", generatedPreviewUrl),
-
     meta("name", "twitter:image:alt", generatedPreviewUrl ? title : null),
   ]
     .filter(Boolean)
