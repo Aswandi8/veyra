@@ -47,6 +47,7 @@ function getVersion(updatedAt: string): string {
 function imageErrorResponse(status: number): Response {
   return new Response("Preview unavailable", {
     status,
+
     headers: {
       "Cache-Control": "no-store",
     },
@@ -61,20 +62,19 @@ function getPreviewCacheControl(request: Request, updatedAt: string): string {
   const currentVersion = getVersion(updatedAt);
 
   /*
-   * Versioned URL:
+   * Versioned:
    *
    * /preview?v=<updatedAt>
    *
-   * Aman di-cache sangat lama karena ShortLink edit
-   * menghasilkan URL version baru.
+   * Aman immutable karena ShortLink edit akan
+   * menghasilkan updatedAt dan URL baru.
    */
   if (requestedVersion && requestedVersion === currentVersion) {
     return "public, max-age=31536000, s-maxage=31536000, immutable";
   }
 
   /*
-   * Direct/unversioned preview tetap boleh dibuka
-   * admin/user, tetapi jangan cache terlalu lama.
+   * URL /preview tanpa version tetap short-cache.
    */
   return "public, max-age=60, s-maxage=300, stale-while-revalidate=3600";
 }
@@ -85,10 +85,11 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const shortLink = await getPublicShortLink(slug);
 
-    if (shortLink.previewType === "NONE") {
-      return imageErrorResponse(404);
-    }
-
+    /*
+     * Tidak ada lagi previewType NONE.
+     *
+     * IMAGE dan VIDEO harus mempunyai source image.
+     */
     const media = getShortLinkSocialMedia(shortLink);
 
     if (!media.sourceImageUrl) {
@@ -105,8 +106,10 @@ export async function GET(request: Request, context: RouteContext) {
 
         displayDuration: normalizeDuration(shortLink.displayDuration),
       }),
+
       {
         width: WIDTH,
+
         height: HEIGHT,
 
         headers: {

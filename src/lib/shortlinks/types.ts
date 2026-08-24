@@ -1,5 +1,5 @@
 export type ShortLinkStatus = "ACTIVE" | "INACTIVE";
-export type ShortLinkPreviewType = "NONE" | "IMAGE" | "VIDEO";
+export type ShortLinkPreviewType = "IMAGE" | "VIDEO";
 
 export interface ShortLinkCreator {
   id: string;

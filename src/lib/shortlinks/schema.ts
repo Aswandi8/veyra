@@ -1,12 +1,14 @@
 import { z } from "zod";
 
 export const shortLinkStatusSchema = z.enum(["ACTIVE", "INACTIVE"]);
-export const shortLinkPreviewTypeSchema = z.enum(["NONE", "IMAGE", "VIDEO"]);
+
+export const shortLinkPreviewTypeSchema = z.enum(["IMAGE", "VIDEO"]);
 
 export const shortLinksQuerySchema = z.object({
   q: z.string().trim().max(100).default(""),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+
   sort: z
     .enum([
       "slug",
@@ -18,8 +20,11 @@ export const shortLinksQuerySchema = z.object({
       "updatedAt",
     ])
     .default("createdAt"),
+
   order: z.enum(["asc", "desc"]).default("desc"),
+
   status: shortLinkStatusSchema.optional(),
+
   previewType: shortLinkPreviewTypeSchema.optional(),
 });
 
@@ -44,15 +49,19 @@ export const shortLinkFormSchema = z
       ),
 
     status: shortLinkStatusSchema,
+
     previewType: shortLinkPreviewTypeSchema,
 
     title: z.string().trim().max(200).optional(),
+
     description: z.string().trim().max(1000).optional(),
 
     thumbnailUrl: z.string().trim().optional(),
+
     previewVideoUrl: z.string().trim().optional(),
 
     showPlayButton: z.boolean(),
+
     displayDuration: z
       .string()
       .trim()
@@ -63,32 +72,26 @@ export const shortLinkFormSchema = z
       .optional(),
   })
   .superRefine((value, context) => {
-    if (value.previewType === "IMAGE" && !value.thumbnailUrl) {
+    if (!value.thumbnailUrl) {
       context.addIssue({
         code: "custom",
         path: ["thumbnailUrl"],
-        message: "Thumbnail URL is required for IMAGE preview.",
+        message:
+          value.previewType === "VIDEO"
+            ? "Thumbnail/poster URL is required for VIDEO preview."
+            : "Image URL is required for IMAGE preview.",
       });
     }
 
-    if (value.previewType === "VIDEO") {
-      if (!value.thumbnailUrl) {
-        context.addIssue({
-          code: "custom",
-          path: ["thumbnailUrl"],
-          message: "Thumbnail/poster URL is required for VIDEO preview.",
-        });
-      }
-
-      if (!value.previewVideoUrl) {
-        context.addIssue({
-          code: "custom",
-          path: ["previewVideoUrl"],
-          message: "Video URL is required for VIDEO preview.",
-        });
-      }
+    if (value.previewType === "VIDEO" && !value.previewVideoUrl) {
+      context.addIssue({
+        code: "custom",
+        path: ["previewVideoUrl"],
+        message: "Video URL is required for VIDEO preview.",
+      });
     }
   });
 
 export type ShortLinksQuery = z.infer<typeof shortLinksQuerySchema>;
+
 export type ShortLinkFormValues = z.infer<typeof shortLinkFormSchema>;

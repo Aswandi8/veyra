@@ -8,6 +8,7 @@ interface SocialHtmlOptions {
 export interface ShortLinkSocialMedia {
   sourceImageUrl: string | null;
   sourceImageMimeType: string | null;
+
   videoUrl: string | null;
   videoMimeType: string | null;
 }
@@ -55,7 +56,9 @@ function normalizeHttpUrl(value: string | null | undefined): string | null {
 }
 
 function getExtension(value: string | null): string | null {
-  if (!value) return null;
+  if (!value) {
+    return null;
+  }
 
   try {
     return (
@@ -155,9 +158,17 @@ export function getShortLinkSocialMedia(
     sourceImageMimeType = "image/jpeg";
   } else if (isSvg) {
     sourceImageUrl = null;
+
     sourceImageMimeType = null;
   }
 
+  /*
+   * IMAGE tidak memiliki video metadata.
+   *
+   * VIDEO tetap mengirim video asli sebagai
+   * og:video sambil generated preview image
+   * menjadi static fallback.
+   */
   const videoUrl =
     shortLink.previewType === "VIDEO"
       ? normalizeHttpUrl(shortLink.previewVideoUrl)
@@ -170,6 +181,7 @@ export function getShortLinkSocialMedia(
   return {
     sourceImageUrl,
     sourceImageMimeType,
+
     videoUrl,
     videoMimeType,
   };
@@ -177,7 +189,9 @@ export function getShortLinkSocialMedia(
 
 function meta(
   attribute: "property" | "name",
+
   key: string,
+
   value: string | null | undefined,
 ): string {
   const normalized = value?.trim();
@@ -232,10 +246,13 @@ export function createShortLinkSocialHtml({
 
   const media = getShortLinkSocialMedia(shortLink);
 
-  const generatedPreviewUrl =
-    shortLink.previewType !== "NONE" && media.sourceImageUrl
-      ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
-      : null;
+  /*
+   * IMAGE dan VIDEO sekarang selalu mempunyai
+   * image/poster sehingga tidak ada NONE branch.
+   */
+  const generatedPreviewUrl = media.sourceImageUrl
+    ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
+    : null;
 
   const ogType = media.videoUrl ? "video.other" : "website";
 
@@ -262,6 +279,9 @@ export function createShortLinkSocialHtml({
 
     meta("property", "og:image:alt", generatedPreviewUrl ? title : null),
 
+    /*
+     * VIDEO-only metadata.
+     */
     meta("property", "og:video", media.videoUrl),
 
     meta("property", "og:video:secure_url", media.videoUrl),
@@ -278,6 +298,9 @@ export function createShortLinkSocialHtml({
       media.videoUrl ? shortLink.previewVideoHeight : null,
     ),
 
+    /*
+     * X image fallback tetap generated preview.
+     */
     meta(
       "name",
       "twitter:card",

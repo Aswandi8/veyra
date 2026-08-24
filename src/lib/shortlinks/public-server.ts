@@ -4,16 +4,21 @@ import { getCentralApiUrl } from "@/lib/auth/proxy";
 
 export type PublicShortLinkStatus = "ACTIVE" | "INACTIVE";
 
-export type PublicShortLinkPreviewType = "NONE" | "IMAGE" | "VIDEO";
+export type PublicShortLinkPreviewType = "IMAGE" | "VIDEO";
 
 export interface PublicShortLink {
   id: string;
+
   slug: string;
+
   destinationUrl: string;
+
   status: PublicShortLinkStatus;
+
   previewType: PublicShortLinkPreviewType;
 
   title: string | null;
+
   description: string | null;
 
   thumbnailUrl: string | null;
@@ -30,9 +35,11 @@ export interface PublicShortLink {
   previewVideoSizeBytes: number | null;
 
   showPlayButton: boolean;
+
   displayDuration: string | null;
 
   createdAt: string;
+
   updatedAt: string;
 }
 
@@ -42,11 +49,15 @@ export interface PublicShortLinkTrackData {
   visitorType: "HUMAN" | "CRAWLER" | "BOT" | "UNKNOWN";
 
   socialCrawler: boolean;
+
   crawlerName: string | null;
 
   tracked: boolean;
+
   duplicate: boolean;
+
   counted: boolean;
+
   clickCount: number | null;
 
   shortLink: PublicShortLink | null;
@@ -54,15 +65,21 @@ export interface PublicShortLinkTrackData {
 
 interface TrackResponse {
   success: boolean;
+
   data?: PublicShortLinkTrackData;
+
   code?: string;
+
   error?: string;
 }
 
 interface ResolveResponse {
   success: boolean;
+
   data?: PublicShortLink;
+
   code?: string;
+
   error?: string;
 }
 
@@ -73,6 +90,7 @@ export class PublicShortLinkError extends Error {
     message: string,
   ) {
     super(message);
+
     this.name = "PublicShortLinkError";
   }
 }
@@ -88,14 +106,18 @@ function getInternalKey(): string {
 }
 
 function firstForwardedIp(value: string | null): string | null {
-  if (!value) return null;
+  if (!value) {
+    return null;
+  }
 
   const first = value
     .split(",")
     .map((part) => part.trim())
     .find(Boolean);
 
-  if (!first) return null;
+  if (!first) {
+    return null;
+  }
 
   if (first.startsWith("::ffff:")) {
     return first.slice(7);
@@ -107,15 +129,20 @@ function firstForwardedIp(value: string | null): string | null {
 function getVisitorIp(headers: Headers): string | null {
   const candidates = [
     headers.get("cf-connecting-ip"),
+
     headers.get("x-vercel-forwarded-for"),
+
     headers.get("x-real-ip"),
+
     headers.get("x-forwarded-for"),
   ];
 
   for (const candidate of candidates) {
     const ip = firstForwardedIp(candidate);
 
-    if (ip) return ip;
+    if (ip) {
+      return ip;
+    }
   }
 
   return null;
@@ -124,7 +151,9 @@ function getVisitorIp(headers: Headers): string | null {
 function getVisitorCountry(headers: Headers): string | null {
   const candidates = [
     headers.get("cf-ipcountry"),
+
     headers.get("x-vercel-ip-country"),
+
     headers.get("x-country-code"),
   ];
 
@@ -202,10 +231,14 @@ export async function trackPublicShortLinkRequest(
   request: Request,
 ): Promise<PublicShortLinkTrackData> {
   const response = await fetch(
-    `${getCentralApiUrl()}/api/v1/public/shortlinks/${encodeURIComponent(slug)}/track`,
+    `${getCentralApiUrl()}/api/v1/public/shortlinks/${encodeURIComponent(
+      slug,
+    )}/track`,
     {
       method: "POST",
+
       headers: createTrackingHeaders(request),
+
       cache: "no-store",
     },
   );
@@ -215,7 +248,9 @@ export async function trackPublicShortLinkRequest(
   if (!response.ok || !result?.success || !result.data) {
     throw new PublicShortLinkError(
       response.status,
+
       result?.code ?? "SHORTLINK_TRACK_FAILED",
+
       result?.error ?? `Unable to resolve ShortLink (${response.status})`,
     );
   }
@@ -227,9 +262,12 @@ export async function getPublicShortLink(
   slug: string,
 ): Promise<PublicShortLink> {
   const response = await fetch(
-    `${getCentralApiUrl()}/api/v1/public/shortlinks/${encodeURIComponent(slug)}`,
+    `${getCentralApiUrl()}/api/v1/public/shortlinks/${encodeURIComponent(
+      slug,
+    )}`,
     {
       method: "GET",
+
       cache: "no-store",
     },
   );
@@ -239,7 +277,9 @@ export async function getPublicShortLink(
   if (!response.ok || !result?.success || !result.data) {
     throw new PublicShortLinkError(
       response.status,
+
       result?.code ?? "SHORTLINK_RESOLVE_FAILED",
+
       result?.error ?? `Unable to resolve ShortLink (${response.status})`,
     );
   }

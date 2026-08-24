@@ -14,7 +14,6 @@ export function getShortLinksFilters(): readonly DataTableFilter[] {
       key: "previewType",
       label: "Preview",
       options: [
-        { label: "None", value: "NONE" },
         { label: "Image", value: "IMAGE" },
         { label: "Video", value: "VIDEO" },
       ],

@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type SyntheticEvent,
 } from "react";
-import { AlertTriangle, ImageIcon, Link2, Play, Video } from "lucide-react";
+import { AlertTriangle, ImageIcon, Play, Video } from "lucide-react";
 
 import { StatusBadge } from "@/components/common/status/status-badge";
 import { ShortLinkShareButton } from "@/components/shortlinks/shortlink-share-button";
@@ -42,18 +42,27 @@ interface VideoMetadata {
 interface ShortLinkPreviewCardProps {
   previewType: ShortLinkPreviewType;
   status: ShortLinkStatus;
+
   slug: string;
+
   title?: string | null;
   description?: string | null;
+
   destinationUrl?: string;
+
   thumbnailUrl?: string;
   previewVideoUrl?: string;
+
   showPlayButton: boolean;
   displayDuration?: string | null;
+
   publicUrl?: string;
+
   shareUrl?: string;
   shareDisabled?: boolean;
+
   onImageMetadata?: (metadata: ImageMetadata) => void;
+
   onVideoMetadata?: (metadata: VideoMetadata) => void;
 }
 
@@ -95,29 +104,38 @@ function isPublicHttpUrl(value: string): boolean {
 export function ShortLinkPreviewCard({
   previewType,
   status,
+
   slug,
+
   title,
   description,
+
   destinationUrl,
+
   thumbnailUrl = "",
   previewVideoUrl = "",
+
   showPlayButton,
   displayDuration,
+
   publicUrl,
+
   shareUrl,
   shareDisabled = false,
+
   onImageMetadata,
   onVideoMetadata,
 }: ShortLinkPreviewCardProps) {
   const rawImageUrl = thumbnailUrl.trim();
+
   const rawVideoUrl = previewVideoUrl.trim();
 
   /*
    * URL dari form dapat berubah beberapa kali ketika user
    * mengetik / paste.
    *
-   * Deferred value mencegah elemen media mencoba URL
-   * intermediate terlalu agresif.
+   * Deferred value mencegah media mencoba URL intermediate
+   * terlalu agresif.
    */
   const deferredImageUrl = useDeferredValue(rawImageUrl);
 
@@ -164,8 +182,8 @@ export function ShortLinkPreviewCard({
     const image = event.currentTarget;
 
     /*
-     * Abaikan event dari URL lama jika user sudah
-     * mengganti input.
+     * Abaikan event URL lama apabila user
+     * sudah mengganti input.
      */
     if (imageUrl !== rawImageUrl) {
       return;
@@ -208,8 +226,11 @@ export function ShortLinkPreviewCard({
 
     onVideoMetadata?.({
       url: videoUrl,
+
       width: video.videoWidth,
+
       height: video.videoHeight,
+
       durationMs: Number.isFinite(video.duration)
         ? Math.round(video.duration * 1000)
         : null,
@@ -259,14 +280,6 @@ export function ShortLinkPreviewCard({
 
       <CardContent className="space-y-4">
         <div className="relative flex min-h-64 items-center justify-center overflow-hidden rounded-lg border bg-muted/30">
-          {previewType === "NONE" ? (
-            <MediaPlaceholder
-              icon={<Link2 className="size-5 text-muted-foreground" />}
-              title="No preview"
-              description="Select IMAGE or VIDEO to add social media."
-            />
-          ) : null}
-
           {previewType === "IMAGE" ? (
             <>
               {!rawImageUrl ? (
@@ -432,7 +445,7 @@ export function ShortLinkPreviewCard({
             </>
           ) : null}
 
-          {previewType !== "NONE" && showPlayButton ? (
+          {showPlayButton ? (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div className="flex size-12 items-center justify-center rounded-full bg-black/70 text-white shadow-sm">
                 <Play className="ml-0.5 size-5 fill-current" />
@@ -440,7 +453,7 @@ export function ShortLinkPreviewCard({
             </div>
           ) : null}
 
-          {previewType !== "NONE" && displayDuration?.trim() ? (
+          {displayDuration?.trim() ? (
             <span className="pointer-events-none absolute right-2 bottom-2 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
               {displayDuration.trim()}
             </span>
@@ -461,6 +474,7 @@ export function ShortLinkPreviewCard({
 
         <div className="flex flex-wrap gap-2">
           <StatusBadge status={status} />
+
           <StatusBadge status={previewType} />
         </div>
 

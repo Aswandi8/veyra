@@ -66,6 +66,7 @@ interface VideoMetadata {
 
 export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
   const router = useRouter();
+
   const [isNavigating, startNavigation] = useTransition();
 
   const [imageMetadata, setImageMetadata] = useState<ImageMetadata | null>(
@@ -102,34 +103,93 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
     formState: { errors, isSubmitting },
   } = useForm<ShortLinkFormValues>({
     resolver: zodResolver(shortLinkFormSchema),
+
     defaultValues: {
       slug: shortLink?.slug ?? "",
       destinationUrl: shortLink?.destinationUrl ?? "",
       status: shortLink?.status ?? "ACTIVE",
-      previewType: shortLink?.previewType ?? "NONE",
+
+      /*
+       * Tidak ada lagi NONE.
+       * New ShortLink mulai dari IMAGE.
+       */
+      previewType: shortLink?.previewType ?? "IMAGE",
+
       title: shortLink?.title ?? "",
       description: shortLink?.description ?? "",
+
       thumbnailUrl: shortLink?.thumbnailUrl ?? "",
       previewVideoUrl: shortLink?.previewVideoUrl ?? "",
+
       showPlayButton: shortLink?.showPlayButton ?? false,
+
       displayDuration: shortLink?.displayDuration ?? "",
     },
   });
 
-  const slug = useWatch({ control, name: "slug" }) ?? "";
-  const status = useWatch({ control, name: "status" });
-  const previewType = useWatch({ control, name: "previewType" });
-  const title = useWatch({ control, name: "title" }) ?? "";
-  const description = useWatch({ control, name: "description" }) ?? "";
-  const destinationUrl = useWatch({ control, name: "destinationUrl" }) ?? "";
-  const thumbnailUrl = useWatch({ control, name: "thumbnailUrl" }) ?? "";
-  const previewVideoUrl = useWatch({ control, name: "previewVideoUrl" }) ?? "";
-  const showPlayButton = useWatch({ control, name: "showPlayButton" });
-  const displayDuration = useWatch({ control, name: "displayDuration" }) ?? "";
+  const slug =
+    useWatch({
+      control,
+      name: "slug",
+    }) ?? "";
+
+  const status = useWatch({
+    control,
+    name: "status",
+  });
+
+  const previewType = useWatch({
+    control,
+    name: "previewType",
+  });
+
+  const title =
+    useWatch({
+      control,
+      name: "title",
+    }) ?? "";
+
+  const description =
+    useWatch({
+      control,
+      name: "description",
+    }) ?? "";
+
+  const destinationUrl =
+    useWatch({
+      control,
+      name: "destinationUrl",
+    }) ?? "";
+
+  const thumbnailUrl =
+    useWatch({
+      control,
+      name: "thumbnailUrl",
+    }) ?? "";
+
+  const previewVideoUrl =
+    useWatch({
+      control,
+      name: "previewVideoUrl",
+    }) ?? "";
+
+  const showPlayButton = useWatch({
+    control,
+    name: "showPlayButton",
+  });
+
+  const displayDuration =
+    useWatch({
+      control,
+      name: "displayDuration",
+    }) ?? "";
 
   const pending = isSubmitting || isNavigating;
+
   const normalizedSlug = slug.trim();
+
   const previewSlug = normalizedSlug || shortLink?.slug || "auto-generated";
+
   const publicUrl = getPublicShortLinkUrl(previewSlug);
 
   const savedSlugMatches =
@@ -142,6 +202,7 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
     savedSlugMatches && shortLink ? getPublicShortLinkUrl(shortLink.slug) : "";
 
   const currentThumbnailUrl = thumbnailUrl.trim();
+
   const currentVideoUrl = previewVideoUrl.trim();
 
   const activeImageMetadata =
@@ -153,28 +214,31 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
   async function onSubmit(values: ShortLinkFormValues) {
     const payload = {
       slug: values.slug.trim(),
+
       destinationUrl: values.destinationUrl.trim(),
+
       status: values.status,
+
       previewType: values.previewType,
 
       title: values.title?.trim() || null,
+
       description: values.description?.trim() || null,
 
-      thumbnailUrl:
-        values.previewType === "NONE"
-          ? null
-          : values.thumbnailUrl?.trim() || null,
+      /*
+       * IMAGE dan VIDEO sama-sama wajib
+       * mempunyai image/poster.
+       */
+      thumbnailUrl: values.thumbnailUrl?.trim() || null,
 
-      thumbnailWidth:
-        values.previewType === "NONE"
-          ? null
-          : (activeImageMetadata?.width ?? null),
+      thumbnailWidth: activeImageMetadata?.width ?? null,
 
-      thumbnailHeight:
-        values.previewType === "NONE"
-          ? null
-          : (activeImageMetadata?.height ?? null),
+      thumbnailHeight: activeImageMetadata?.height ?? null,
 
+      /*
+       * Hanya VIDEO yang mengirim video fields.
+       * IMAGE selalu membersihkannya.
+       */
       previewVideoUrl:
         values.previewType === "VIDEO"
           ? values.previewVideoUrl?.trim() || null
@@ -195,13 +259,9 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
           ? (activeVideoMetadata?.durationMs ?? null)
           : null,
 
-      showPlayButton:
-        values.previewType === "NONE" ? false : values.showPlayButton,
+      showPlayButton: values.showPlayButton,
 
-      displayDuration:
-        values.previewType === "NONE"
-          ? null
-          : values.displayDuration?.trim() || null,
+      displayDuration: values.displayDuration?.trim() || null,
     };
 
     const endpoint =
@@ -212,11 +272,15 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
     try {
       const response = await fetch(endpoint, {
         method: isEdit ? "PUT" : "POST",
+
         headers: {
           "Content-Type": "application/json",
         },
+
         credentials: "include",
+
         cache: "no-store",
+
         body: JSON.stringify(payload),
       });
 
@@ -232,6 +296,7 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
               ? `Unable to update shortlink (${response.status}).`
               : `Unable to create shortlink (${response.status}).`),
         );
+
         return;
       }
 
@@ -249,6 +314,7 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
       });
     } catch (error) {
       console.error("[SHORTLINK FORM]", error);
+
       toast.error("Central API is unavailable.");
     }
   }
@@ -387,10 +453,6 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
                       </SelectTrigger>
 
                       <SelectContent>
-                        <SelectItem value="NONE">
-                          <StatusBadge status="NONE" />
-                        </SelectItem>
-
                         <SelectItem value="IMAGE">
                           <StatusBadge status="IMAGE" />
                         </SelectItem>
@@ -404,166 +466,152 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
                 />
               </div>
 
-              {previewType !== "NONE" ? (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="title">Title</Label>
+              <div className="space-y-2">
+                <Label htmlFor="title">Title</Label>
 
-                    <Input
-                      id="title"
-                      placeholder="Video Viral Hari Ini"
-                      disabled={pending}
-                      {...register("title")}
-                    />
+                <Input
+                  id="title"
+                  placeholder="Video Viral Hari Ini"
+                  disabled={pending}
+                  {...register("title")}
+                />
 
-                    {errors.title?.message ? (
-                      <TypographyMuted className="text-destructive">
-                        {errors.title.message}
-                      </TypographyMuted>
-                    ) : null}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="description">Description</Label>
-
-                    <Textarea
-                      id="description"
-                      rows={4}
-                      placeholder="Description shown in social metadata..."
-                      disabled={pending}
-                      {...register("description")}
-                    />
-
-                    {errors.description?.message ? (
-                      <TypographyMuted className="text-destructive">
-                        {errors.description.message}
-                      </TypographyMuted>
-                    ) : null}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="thumbnailUrl">
-                      {previewType === "VIDEO"
-                        ? "Thumbnail / poster URL"
-                        : "Image URL"}
-                    </Label>
-
-                    <Input
-                      id="thumbnailUrl"
-                      type="url"
-                      placeholder="https://res.cloudinary.com/.../image.jpg"
-                      disabled={pending}
-                      {...register("thumbnailUrl")}
-                    />
-
-                    {errors.thumbnailUrl?.message ? (
-                      <TypographyMuted className="text-destructive">
-                        {errors.thumbnailUrl.message}
-                      </TypographyMuted>
-                    ) : activeImageMetadata ? (
-                      <TypographyMuted>
-                        Original image: {activeImageMetadata.width} ×{" "}
-                        {activeImageMetadata.height}px
-                      </TypographyMuted>
-                    ) : (
-                      <TypographyMuted>
-                        Use a public direct image URL.
-                      </TypographyMuted>
-                    )}
-                  </div>
-
-                  {previewType === "VIDEO" ? (
-                    <div className="space-y-2">
-                      <Label htmlFor="previewVideoUrl">Video URL</Label>
-
-                      <Input
-                        id="previewVideoUrl"
-                        type="url"
-                        placeholder="https://res.cloudinary.com/.../video.mp4"
-                        disabled={pending}
-                        {...register("previewVideoUrl")}
-                      />
-
-                      {errors.previewVideoUrl?.message ? (
-                        <TypographyMuted className="text-destructive">
-                          {errors.previewVideoUrl.message}
-                        </TypographyMuted>
-                      ) : activeVideoMetadata ? (
-                        <TypographyMuted>
-                          Original video: {activeVideoMetadata.width} ×{" "}
-                          {activeVideoMetadata.height}px
-                          {activeVideoMetadata.durationMs !== null
-                            ? ` • ${(
-                                activeVideoMetadata.durationMs / 1000
-                              ).toFixed(2)}s`
-                            : ""}
-                        </TypographyMuted>
-                      ) : (
-                        <TypographyMuted>
-                          Use a public direct video URL.
-                        </TypographyMuted>
-                      )}
-                    </div>
-                  ) : null}
-
-                  <div className="grid gap-5 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="displayDuration">
-                        Displayed duration
-                      </Label>
-
-                      <Input
-                        id="displayDuration"
-                        placeholder="12:46"
-                        disabled={pending}
-                        {...register("displayDuration")}
-                      />
-
-                      {errors.displayDuration?.message ? (
-                        <TypographyMuted className="text-destructive">
-                          {errors.displayDuration.message}
-                        </TypographyMuted>
-                      ) : (
-                        <TypographyMuted>
-                          Visual/fake duration only. Original video is
-                          unchanged.
-                        </TypographyMuted>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Play button</Label>
-
-                      <Controller
-                        control={control}
-                        name="showPlayButton"
-                        render={({ field }) => (
-                          <label className="flex min-h-8 cursor-pointer items-center gap-3 rounded-lg border px-3">
-                            <Checkbox
-                              checked={field.value}
-                              disabled={pending}
-                              onCheckedChange={(value) =>
-                                field.onChange(value === true)
-                              }
-                            />
-
-                            <span className="text-sm font-medium">
-                              Show play button overlay
-                            </span>
-                          </label>
-                        )}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="rounded-lg border bg-muted/30 p-4">
-                  <TypographyMuted>
-                    NONE creates a standard tracked ShortLink without image or
-                    video social media.
+                {errors.title?.message ? (
+                  <TypographyMuted className="text-destructive">
+                    {errors.title.message}
                   </TypographyMuted>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Description</Label>
+
+                <Textarea
+                  id="description"
+                  rows={4}
+                  placeholder="Description shown in social metadata..."
+                  disabled={pending}
+                  {...register("description")}
+                />
+
+                {errors.description?.message ? (
+                  <TypographyMuted className="text-destructive">
+                    {errors.description.message}
+                  </TypographyMuted>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="thumbnailUrl">
+                  {previewType === "VIDEO"
+                    ? "Thumbnail / poster URL"
+                    : "Image URL"}
+                </Label>
+
+                <Input
+                  id="thumbnailUrl"
+                  type="url"
+                  placeholder="https://res.cloudinary.com/.../image.jpg"
+                  disabled={pending}
+                  {...register("thumbnailUrl")}
+                />
+
+                {errors.thumbnailUrl?.message ? (
+                  <TypographyMuted className="text-destructive">
+                    {errors.thumbnailUrl.message}
+                  </TypographyMuted>
+                ) : activeImageMetadata ? (
+                  <TypographyMuted>
+                    Original image: {activeImageMetadata.width} ×{" "}
+                    {activeImageMetadata.height}px
+                  </TypographyMuted>
+                ) : (
+                  <TypographyMuted>
+                    Use a public direct image URL.
+                  </TypographyMuted>
+                )}
+              </div>
+
+              {previewType === "VIDEO" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="previewVideoUrl">Video URL</Label>
+
+                  <Input
+                    id="previewVideoUrl"
+                    type="url"
+                    placeholder="https://res.cloudinary.com/.../video.mp4"
+                    disabled={pending}
+                    {...register("previewVideoUrl")}
+                  />
+
+                  {errors.previewVideoUrl?.message ? (
+                    <TypographyMuted className="text-destructive">
+                      {errors.previewVideoUrl.message}
+                    </TypographyMuted>
+                  ) : activeVideoMetadata ? (
+                    <TypographyMuted>
+                      Original video: {activeVideoMetadata.width} ×{" "}
+                      {activeVideoMetadata.height}px
+                      {activeVideoMetadata.durationMs !== null
+                        ? ` • ${(activeVideoMetadata.durationMs / 1000).toFixed(
+                            2,
+                          )}s`
+                        : ""}
+                    </TypographyMuted>
+                  ) : (
+                    <TypographyMuted>
+                      Use a public direct video URL.
+                    </TypographyMuted>
+                  )}
                 </div>
-              )}
+              ) : null}
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="displayDuration">Displayed duration</Label>
+
+                  <Input
+                    id="displayDuration"
+                    placeholder="12:46"
+                    disabled={pending}
+                    {...register("displayDuration")}
+                  />
+
+                  {errors.displayDuration?.message ? (
+                    <TypographyMuted className="text-destructive">
+                      {errors.displayDuration.message}
+                    </TypographyMuted>
+                  ) : (
+                    <TypographyMuted>
+                      Visual/fake duration only. Original video is unchanged.
+                    </TypographyMuted>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Play button</Label>
+
+                  <Controller
+                    control={control}
+                    name="showPlayButton"
+                    render={({ field }) => (
+                      <label className="flex min-h-8 cursor-pointer items-center gap-3 rounded-lg border px-3">
+                        <Checkbox
+                          checked={field.value}
+                          disabled={pending}
+                          onCheckedChange={(value) =>
+                            field.onChange(value === true)
+                          }
+                        />
+
+                        <span className="text-sm font-medium">
+                          Show play button overlay
+                        </span>
+                      </label>
+                    )}
+                  />
+                </div>
+              </div>
             </section>
           </form>
         </CardContent>
