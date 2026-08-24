@@ -127,10 +127,9 @@ function isCloudinaryUploadImage(value: string): boolean {
 function createCloudinarySocialJpeg(value: string): string {
   const url = new URL(value);
 
-  url.pathname = url.pathname.replace(
-    "/image/upload/",
-    "/image/upload/f_jpg,q_auto/",
-  );
+  url.pathname = url.pathname
+    .replace("/image/upload/", "/image/upload/f_jpg,q_auto/")
+    .replace(/\.svg$/i, ".jpg");
 
   return url.toString();
 }
