@@ -18,14 +18,10 @@ interface RouteContext {
 const WIDTH = 1200;
 const HEIGHT = 630;
 
-function getBaseHostname(requestUrl: string): string {
-  try {
-    const configured = process.env.NEXT_PUBLIC_SHORTLINK_BASE_URL?.trim();
+function normalizeTitle(value: string | null): string {
+  const normalized = value?.trim();
 
-    return new URL(configured || requestUrl).hostname.replace(/^www\./i, "");
-  } catch {
-    return "ShortLink";
-  }
+  return normalized ? normalized.slice(0, 120) : "ShortLink";
 }
 
 function normalizeDuration(value: string | null): string | null {
@@ -62,19 +58,19 @@ function getPreviewCacheControl(request: Request, updatedAt: string): string {
   const currentVersion = getVersion(updatedAt);
 
   /*
-   * Versioned:
+   * Versioned URL:
    *
    * /preview?v=<updatedAt>
    *
-   * Aman immutable karena ShortLink edit akan
-   * menghasilkan updatedAt dan URL baru.
+   * Aman di-cache sangat lama karena edit ShortLink
+   * menghasilkan updatedAt / URL baru.
    */
   if (requestedVersion && requestedVersion === currentVersion) {
     return "public, max-age=31536000, s-maxage=31536000, immutable";
   }
 
   /*
-   * URL /preview tanpa version tetap short-cache.
+   * Direct/unversioned preview tetap short-cache.
    */
   return "public, max-age=60, s-maxage=300, stale-while-revalidate=3600";
 }
@@ -85,11 +81,6 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const shortLink = await getPublicShortLink(slug);
 
-    /*
-     * Tidak ada lagi previewType NONE.
-     *
-     * IMAGE dan VIDEO harus mempunyai source image.
-     */
     const media = getShortLinkSocialMedia(shortLink);
 
     if (!media.sourceImageUrl) {
@@ -100,7 +91,11 @@ export async function GET(request: Request, context: RouteContext) {
       ShortLinkSocialPreview({
         imageUrl: media.sourceImageUrl,
 
-        hostname: getBaseHostname(request.url),
+        /*
+         * Overlay kiri bawah sekarang memakai
+         * title ShortLink, bukan hostname/domain.
+         */
+        title: normalizeTitle(shortLink.title),
 
         showPlayButton: shortLink.showPlayButton,
 

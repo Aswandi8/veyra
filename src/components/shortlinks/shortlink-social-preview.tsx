@@ -2,17 +2,19 @@ import type { ReactElement } from "react";
 
 interface ShortLinkSocialPreviewProps {
   imageUrl: string;
-  hostname: string;
+  title: string;
   showPlayButton: boolean;
   displayDuration: string | null;
 }
 
 export function ShortLinkSocialPreview({
   imageUrl,
-  hostname,
+  title,
   showPlayButton,
   displayDuration,
 }: ShortLinkSocialPreviewProps): ReactElement {
+  const normalizedTitle = title.trim() || "ShortLink";
+
   return (
     <div
       style={{
@@ -86,6 +88,7 @@ export function ShortLinkSocialPreview({
           display: "flex",
           alignItems: "flex-end",
           justifyContent: "space-between",
+          gap: 24,
           fontFamily: "Arial, Helvetica, sans-serif",
           fontSize: 28,
           fontWeight: 700,
@@ -95,19 +98,25 @@ export function ShortLinkSocialPreview({
         <div
           style={{
             display: "flex",
+            minWidth: 0,
+            maxWidth: displayDuration ? "78%" : "100%",
             padding: "9px 14px",
+            overflow: "hidden",
+            whiteSpace: "nowrap",
+            textOverflow: "ellipsis",
             borderRadius: 9,
             background: "rgba(0,0,0,0.78)",
             textShadow: "0 1px 3px rgba(0,0,0,0.9)",
           }}
         >
-          {hostname}
+          {normalizedTitle}
         </div>
 
         {displayDuration ? (
           <div
             style={{
               display: "flex",
+              flexShrink: 0,
               padding: "9px 14px",
               borderRadius: 9,
               background: "rgba(0,0,0,0.82)",

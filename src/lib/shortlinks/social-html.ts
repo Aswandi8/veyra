@@ -3,15 +3,17 @@ import type { PublicShortLink } from "@/lib/shortlinks/public-server";
 interface SocialHtmlOptions {
   shortLink: PublicShortLink;
   canonicalUrl: string;
+  crawlerName?: string | null;
 }
 
 export interface ShortLinkSocialMedia {
   sourceImageUrl: string | null;
   sourceImageMimeType: string | null;
-
   videoUrl: string | null;
   videoMimeType: string | null;
 }
+
+type SocialPlatform = "X" | "FACEBOOK" | "WHATSAPP" | "OTHER";
 
 function cleanText(
   value: string | null | undefined,
@@ -137,6 +139,34 @@ function createCloudinarySocialJpeg(value: string): string {
   return url.toString();
 }
 
+function resolveSocialPlatform(
+  crawlerName: string | null | undefined,
+): SocialPlatform {
+  const normalized = crawlerName?.trim().toLowerCase() ?? "";
+
+  if (
+    normalized.includes("twitter") ||
+    normalized.includes("twitterbot") ||
+    normalized === "x"
+  ) {
+    return "X";
+  }
+
+  if (
+    normalized.includes("facebook") ||
+    normalized.includes("facebookexternalhit") ||
+    normalized.includes("facebot")
+  ) {
+    return "FACEBOOK";
+  }
+
+  if (normalized.includes("whatsapp")) {
+    return "WHATSAPP";
+  }
+
+  return "OTHER";
+}
+
 export function getShortLinkSocialMedia(
   shortLink: PublicShortLink,
 ): ShortLinkSocialMedia {
@@ -158,17 +188,9 @@ export function getShortLinkSocialMedia(
     sourceImageMimeType = "image/jpeg";
   } else if (isSvg) {
     sourceImageUrl = null;
-
     sourceImageMimeType = null;
   }
 
-  /*
-   * IMAGE tidak memiliki video metadata.
-   *
-   * VIDEO tetap mengirim video asli sebagai
-   * og:video sambil generated preview image
-   * menjadi static fallback.
-   */
   const videoUrl =
     shortLink.previewType === "VIDEO"
       ? normalizeHttpUrl(shortLink.previewVideoUrl)
@@ -181,7 +203,6 @@ export function getShortLinkSocialMedia(
   return {
     sourceImageUrl,
     sourceImageMimeType,
-
     videoUrl,
     videoMimeType,
   };
@@ -189,9 +210,7 @@ export function getShortLinkSocialMedia(
 
 function meta(
   attribute: "property" | "name",
-
   key: string,
-
   value: string | null | undefined,
 ): string {
   const normalized = value?.trim();
@@ -237,6 +256,7 @@ function getGeneratedPreviewUrl(
 export function createShortLinkSocialHtml({
   shortLink,
   canonicalUrl,
+  crawlerName,
 }: SocialHtmlOptions): string {
   const normalizedCanonical = normalizeHttpUrl(canonicalUrl) ?? canonicalUrl;
 
@@ -246,15 +266,25 @@ export function createShortLinkSocialHtml({
 
   const media = getShortLinkSocialMedia(shortLink);
 
-  /*
-   * IMAGE dan VIDEO sekarang selalu mempunyai
-   * image/poster sehingga tidak ada NONE branch.
-   */
+  const platform = resolveSocialPlatform(crawlerName);
+
   const generatedPreviewUrl = media.sourceImageUrl
     ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
     : null;
 
-  const ogType = media.videoUrl ? "video.other" : "website";
+  /*
+   * X:
+   * VIDEO dipresentasikan sebagai generated image card.
+   *
+   * Facebook / WhatsApp / crawler lain:
+   * VIDEO tetap mendapat og:video + poster fallback.
+   */
+  const exposeOpenGraphVideo =
+    shortLink.previewType === "VIDEO" &&
+    Boolean(media.videoUrl) &&
+    platform !== "X";
+
+  const ogType = exposeOpenGraphVideo ? "video.other" : "website";
 
   const tags = [
     meta("name", "robots", "noindex,follow"),
@@ -279,28 +309,30 @@ export function createShortLinkSocialHtml({
 
     meta("property", "og:image:alt", generatedPreviewUrl ? title : null),
 
-    /*
-     * VIDEO-only metadata.
-     */
-    meta("property", "og:video", media.videoUrl),
+    meta("property", "og:video", exposeOpenGraphVideo ? media.videoUrl : null),
 
-    meta("property", "og:video:secure_url", media.videoUrl),
+    meta(
+      "property",
+      "og:video:secure_url",
+      exposeOpenGraphVideo ? media.videoUrl : null,
+    ),
 
-    meta("property", "og:video:type", media.videoMimeType),
+    meta(
+      "property",
+      "og:video:type",
+      exposeOpenGraphVideo ? media.videoMimeType : null,
+    ),
 
     numberMeta(
       "og:video:width",
-      media.videoUrl ? shortLink.previewVideoWidth : null,
+      exposeOpenGraphVideo ? shortLink.previewVideoWidth : null,
     ),
 
     numberMeta(
       "og:video:height",
-      media.videoUrl ? shortLink.previewVideoHeight : null,
+      exposeOpenGraphVideo ? shortLink.previewVideoHeight : null,
     ),
 
-    /*
-     * X image fallback tetap generated preview.
-     */
     meta(
       "name",
       "twitter:card",

@@ -14,18 +14,10 @@ interface RouteContext {
 function socialHtmlResponse(html: string, status = 200): Response {
   return new Response(html, {
     status,
+
     headers: {
       "Content-Type": "text/html; charset=utf-8",
 
-      /*
-       * Jangan public-cache response ini di edge.
-       *
-       * URL yang sama:
-       * social crawler → HTML
-       * human          → redirect
-       *
-       * Preview image sendiri menggunakan cache kuat.
-       */
       "Cache-Control": "no-store, no-cache, must-revalidate",
 
       "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -36,6 +28,7 @@ function socialHtmlResponse(html: string, status = 200): Response {
 function unavailableHtmlResponse(html: string, status: number): Response {
   return new Response(html, {
     status,
+
     headers: {
       "Content-Type": "text/html; charset=utf-8",
 
@@ -48,6 +41,15 @@ function unavailableHtmlResponse(html: string, status: number): Response {
   });
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function simpleHtml(title: string, message: string): string {
   return `<!doctype html>
 <html lang="en">
@@ -55,11 +57,11 @@ function simpleHtml(title: string, message: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive">
-<title>${title}</title>
+<title>${escapeHtml(title)}</title>
 </head>
 <body>
-<h1>${title}</h1>
-<p>${message}</p>
+<h1>${escapeHtml(title)}</h1>
+<p>${escapeHtml(message)}</p>
 </body>
 </html>`;
 }
@@ -67,6 +69,7 @@ function simpleHtml(title: string, message: string): string {
 function redirectResponse(destinationUrl: string): Response {
   return new Response(null, {
     status: 302,
+
     headers: {
       Location: destinationUrl,
 
@@ -92,26 +95,11 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   try {
-    /*
-     * Hanya SATU Central API request.
-     *
-     * Central API:
-     * - resolve ShortLink
-     * - classify visitor
-     * - track event
-     * - return ShortLink data untuk social crawler
-     */
     const tracking = await trackPublicShortLinkRequest(normalizedSlug, request);
 
     if (tracking.socialCrawler) {
       const shortLink = tracking.shortLink;
 
-      /*
-       * Ini seharusnya selalu tersedia untuk
-       * socialCrawler=true. Guard tetap ada
-       * agar response tidak rusak jika contract
-       * Central API berubah.
-       */
       if (!shortLink) {
         console.error("[WATCH SHORTLINK] Missing social ShortLink payload");
 
@@ -132,6 +120,12 @@ export async function GET(request: Request, context: RouteContext) {
         createShortLinkSocialHtml({
           shortLink,
           canonicalUrl,
+
+          /*
+           * Jangan classify UA di Veyra.
+           * Gunakan hasil Central API.
+           */
+          crawlerName: tracking.crawlerName,
         }),
       );
     }
