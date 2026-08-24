@@ -45,8 +45,11 @@ export interface PublicShortLinkTrackData {
   crawlerName: string | null;
 
   tracked: boolean;
+  duplicate: boolean;
   counted: boolean;
   clickCount: number | null;
+
+  shortLink: PublicShortLink | null;
 }
 
 interface TrackResponse {

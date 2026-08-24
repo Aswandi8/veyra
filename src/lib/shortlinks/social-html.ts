@@ -21,6 +21,7 @@ function cleanText(
     ?.replace(/[\u0000-\u001F\u007F]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+
   return (normalized || fallback).slice(0, maxLength);
 }
 
@@ -35,11 +36,18 @@ function escapeHtml(value: string): string {
 
 function normalizeHttpUrl(value: string | null | undefined): string | null {
   const normalized = value?.trim();
-  if (!normalized) return null;
+
+  if (!normalized) {
+    return null;
+  }
 
   try {
     const url = new URL(normalized);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null;
+    }
+
     return url.toString();
   } catch {
     return null;
@@ -63,16 +71,22 @@ function inferImageMimeType(url: string | null): string | null {
     case "jpg":
     case "jpeg":
       return "image/jpeg";
+
     case "png":
       return "image/png";
+
     case "webp":
       return "image/webp";
+
     case "gif":
       return "image/gif";
+
     case "avif":
       return "image/avif";
+
     case "svg":
       return "image/svg+xml";
+
     default:
       return null;
   }
@@ -82,12 +96,16 @@ function inferVideoMimeType(url: string | null): string | null {
   switch (getExtension(url)) {
     case "mp4":
       return "video/mp4";
+
     case "webm":
       return "video/webm";
+
     case "mov":
       return "video/quicktime";
+
     case "m4v":
       return "video/x-m4v";
+
     default:
       return null;
   }
@@ -122,6 +140,7 @@ export function getShortLinkSocialMedia(
   const originalImageUrl = normalizeHttpUrl(shortLink.thumbnailUrl);
 
   let sourceImageUrl = originalImageUrl;
+
   let sourceImageMimeType =
     shortLink.thumbnailMimeType?.trim().toLowerCase() ||
     inferImageMimeType(originalImageUrl);
@@ -132,6 +151,7 @@ export function getShortLinkSocialMedia(
 
   if (originalImageUrl && isSvg && isCloudinaryUploadImage(originalImageUrl)) {
     sourceImageUrl = createCloudinarySocialJpeg(originalImageUrl);
+
     sourceImageMimeType = "image/jpeg";
   } else if (isSvg) {
     sourceImageUrl = null;
@@ -161,19 +181,43 @@ function meta(
   value: string | null | undefined,
 ): string {
   const normalized = value?.trim();
-  if (!normalized) return "";
 
-  return `<meta ${attribute}="${escapeHtml(key)}" content="${escapeHtml(normalized)}">`;
+  if (!normalized) {
+    return "";
+  }
+
+  return `<meta ${attribute}="${escapeHtml(key)}" content="${escapeHtml(
+    normalized,
+  )}">`;
 }
 
 function numberMeta(property: string, value: number | null): string {
-  if (value === null || !Number.isFinite(value) || value <= 0) return "";
+  if (value === null || !Number.isFinite(value) || value <= 0) {
+    return "";
+  }
 
   return meta("property", property, String(value));
 }
 
-function getGeneratedPreviewUrl(canonicalUrl: string): string {
-  return `${canonicalUrl.replace(/\/+$/, "")}/preview`;
+function getPreviewVersion(updatedAt: string): string {
+  const timestamp = new Date(updatedAt).getTime();
+
+  if (Number.isFinite(timestamp)) {
+    return String(timestamp);
+  }
+
+  return encodeURIComponent(updatedAt);
+}
+
+function getGeneratedPreviewUrl(
+  canonicalUrl: string,
+  updatedAt: string,
+): string {
+  const base = canonicalUrl.replace(/\/+$/, "");
+
+  const version = getPreviewVersion(updatedAt);
+
+  return `${base}/preview?v=${version}`;
 }
 
 export function createShortLinkSocialHtml({
@@ -183,43 +227,52 @@ export function createShortLinkSocialHtml({
   const normalizedCanonical = normalizeHttpUrl(canonicalUrl) ?? canonicalUrl;
 
   const title = cleanText(shortLink.title, "Watch", 200);
+
   const description = cleanText(shortLink.description, title, 500);
 
   const media = getShortLinkSocialMedia(shortLink);
 
   const generatedPreviewUrl =
     shortLink.previewType !== "NONE" && media.sourceImageUrl
-      ? getGeneratedPreviewUrl(normalizedCanonical)
+      ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
       : null;
 
   const ogType = media.videoUrl ? "video.other" : "website";
 
   const tags = [
-    /*
-     * Social crawler boleh mengikuti resource metadata/media,
-     * tetapi halaman ShortLink tidak perlu masuk search index.
-     */
     meta("name", "robots", "noindex,follow"),
 
     meta("property", "og:title", title),
+
     meta("property", "og:description", description),
+
     meta("property", "og:type", ogType),
+
     meta("property", "og:url", normalizedCanonical),
 
     meta("property", "og:image", generatedPreviewUrl),
+
     meta("property", "og:image:secure_url", generatedPreviewUrl),
+
     meta("property", "og:image:type", generatedPreviewUrl ? "image/png" : null),
+
     numberMeta("og:image:width", generatedPreviewUrl ? 1200 : null),
+
     numberMeta("og:image:height", generatedPreviewUrl ? 630 : null),
+
     meta("property", "og:image:alt", generatedPreviewUrl ? title : null),
 
     meta("property", "og:video", media.videoUrl),
+
     meta("property", "og:video:secure_url", media.videoUrl),
+
     meta("property", "og:video:type", media.videoMimeType),
+
     numberMeta(
       "og:video:width",
       media.videoUrl ? shortLink.previewVideoWidth : null,
     ),
+
     numberMeta(
       "og:video:height",
       media.videoUrl ? shortLink.previewVideoHeight : null,
@@ -230,9 +283,13 @@ export function createShortLinkSocialHtml({
       "twitter:card",
       generatedPreviewUrl ? "summary_large_image" : "summary",
     ),
+
     meta("name", "twitter:title", title),
+
     meta("name", "twitter:description", description),
+
     meta("name", "twitter:image", generatedPreviewUrl),
+
     meta("name", "twitter:image:alt", generatedPreviewUrl ? title : null),
   ]
     .filter(Boolean)

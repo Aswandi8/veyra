@@ -1,5 +1,4 @@
 import {
-  getPublicShortLink,
   PublicShortLinkError,
   trackPublicShortLinkRequest,
 } from "@/lib/shortlinks/public-server";
@@ -19,15 +18,16 @@ function socialHtmlResponse(html: string, status = 200): Response {
       "Content-Type": "text/html; charset=utf-8",
 
       /*
-       * Social metadata dapat berubah setelah ShortLink diedit,
-       * jadi jangan cache permanen.
+       * Jangan public-cache response ini di edge.
+       *
+       * URL yang sama:
+       * social crawler → HTML
+       * human          → redirect
+       *
+       * Preview image sendiri menggunakan cache kuat.
        */
       "Cache-Control": "no-store, no-cache, must-revalidate",
 
-      /*
-       * Tidak memakai X-Robots-Tag nofollow/noarchive di sini.
-       * Social crawler perlu bebas mengambil image/video metadata.
-       */
       "Referrer-Policy": "strict-origin-when-cross-origin",
     },
   });
@@ -38,8 +38,11 @@ function unavailableHtmlResponse(html: string, status: number): Response {
     status,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
+
       "Cache-Control": "no-store, no-cache, must-revalidate",
+
       "X-Robots-Tag": "noindex, nofollow, noarchive",
+
       "Referrer-Policy": "strict-origin-when-cross-origin",
     },
   });
@@ -69,9 +72,6 @@ function redirectResponse(destinationUrl: string): Response {
 
       "Cache-Control": "no-store, no-cache, must-revalidate",
 
-      /*
-       * Human redirect tidak perlu diindeks.
-       */
       "X-Robots-Tag": "noindex, nofollow, noarchive",
 
       "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -93,37 +93,49 @@ export async function GET(request: Request, context: RouteContext) {
 
   try {
     /*
-     * Central API tetap menjadi satu-satunya
-     * visitor classifier.
+     * Hanya SATU Central API request.
+     *
+     * Central API:
+     * - resolve ShortLink
+     * - classify visitor
+     * - track event
+     * - return ShortLink data untuk social crawler
      */
     const tracking = await trackPublicShortLinkRequest(normalizedSlug, request);
 
-    /*
-     * Hanya known social crawler menerima
-     * HTML metadata.
-     */
     if (tracking.socialCrawler) {
-      const shortLink = await getPublicShortLink(normalizedSlug);
+      const shortLink = tracking.shortLink;
+
+      /*
+       * Ini seharusnya selalu tersedia untuk
+       * socialCrawler=true. Guard tetap ada
+       * agar response tidak rusak jika contract
+       * Central API berubah.
+       */
+      if (!shortLink) {
+        console.error("[WATCH SHORTLINK] Missing social ShortLink payload");
+
+        return unavailableHtmlResponse(
+          simpleHtml(
+            "Link Unavailable",
+            "This ShortLink is temporarily unavailable.",
+          ),
+          503,
+        );
+      }
 
       const configuredUrl = getPublicShortLinkUrl(shortLink.slug);
 
       const canonicalUrl = new URL(configuredUrl, request.url).toString();
 
-      const html = createShortLinkSocialHtml({
-        shortLink,
-        canonicalUrl,
-      });
-
-      return socialHtmlResponse(html);
+      return socialHtmlResponse(
+        createShortLinkSocialHtml({
+          shortLink,
+          canonicalUrl,
+        }),
+      );
     }
 
-    /*
-     * HUMAN / BOT / UNKNOWN / regular crawler
-     * tetap menuju destination.
-     *
-     * Hanya HUMAN yang menaikkan clickCount
-     * karena keputusan itu dilakukan di Central API.
-     */
     return redirectResponse(tracking.destinationUrl);
   } catch (error) {
     if (error instanceof PublicShortLinkError) {
