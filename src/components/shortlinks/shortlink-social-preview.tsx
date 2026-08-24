@@ -32,7 +32,11 @@ export function ShortLinkSocialPreview({
         alt=""
         width={1200}
         height={630}
-        style={{ width: "100%", height: "100%", objectFit: "contain" }}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "contain",
+        }}
       />
 
       {showPlayButton ? (
@@ -57,16 +61,18 @@ export function ShortLinkSocialPreview({
               boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
             }}
           >
-            <div
+            <svg
+              width="48"
+              height="56"
+              viewBox="0 0 48 56"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
               style={{
-                width: 0,
-                height: 0,
-                marginLeft: 10,
-                borderTop: "25px solid transparent",
-                borderBottom: "25px solid transparent",
-                borderLeft: "39px solid white",
+                marginLeft: 8,
               }}
-            />
+            >
+              <path d="M4 3L44 28L4 53V3Z" fill="white" />
+            </svg>
           </div>
         </div>
       ) : null}
