@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
-
+import { useMemo, useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -9,7 +8,6 @@ import { useForm, useWatch } from "react-hook-form";
 import toast from "react-hot-toast";
 
 import { StatusBadge } from "@/components/common/status/status-badge";
-
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,8 +23,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TypographyMuted } from "@/components/ui/typography";
 
+import { parseApiResponse } from "@/lib/api/response";
 import { roleFormSchema, type RoleFormValues } from "@/lib/roles/schema";
-
 import type {
   PermissionListItem,
   RoleDetail,
@@ -52,43 +50,12 @@ function formatPermissionGroup(value: string): string {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-async function parseMutationResponse(
-  response: Response,
-): Promise<RoleMutationResponse> {
-  const text = await response.text();
-
-  if (!text) {
-    return {
-      success: false,
-      error: `Server returned an empty response (${response.status})`,
-    };
-  }
-
-  try {
-    return JSON.parse(text) as RoleMutationResponse;
-  } catch {
-    console.error("[ROLE MUTATION INVALID RESPONSE]", {
-      status: response.status,
-      contentType: response.headers.get("content-type"),
-      body: text.slice(0, 500),
-    });
-
-    return {
-      success: false,
-      error: `Server returned an invalid response (${response.status})`,
-    };
-  }
-}
-
 export function RoleForm({ mode, permissions, role }: RoleFormProps) {
   const router = useRouter();
+  const [isNavigating, startNavigation] = useTransition();
 
   const isEdit = mode === "edit";
-
   const isSystemRole = Boolean(role?.system);
-
-  const selectedRolePermissions =
-    role?.permissions.map((permission) => permission.name) ?? [];
 
   const {
     control,
@@ -98,30 +65,24 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
     formState: { errors, isSubmitting },
   } = useForm<RoleFormValues>({
     resolver: zodResolver(roleFormSchema),
-
     defaultValues: {
       name: role?.name ?? "",
       description: role?.description ?? "",
-      permissions: selectedRolePermissions,
+      permissions: role?.permissions.map((permission) => permission.name) ?? [],
     },
   });
 
-  const selectedPermissions =
-    useWatch({
-      control,
-      name: "permissions",
-    }) ?? [];
+  const selectedPermissions = useWatch({ control, name: "permissions" }) ?? [];
+
+  const pending = isSubmitting || isNavigating;
 
   const groups = useMemo<PermissionGroup[]>(() => {
     const map = new Map<string, PermissionListItem[]>();
 
     for (const permission of permissions) {
       const group = permission.name.split(".")[0] ?? "other";
-
       const current = map.get(group) ?? [];
-
       current.push(permission);
-
       map.set(group, current);
     }
 
@@ -160,29 +121,26 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
   async function onSubmit(values: RoleFormValues) {
     const payload = {
       name: values.name.trim(),
-
       description: values.description?.trim() || null,
-
       permissions: values.permissions,
     };
 
     const endpoint =
       isEdit && role ? `/api/admin/roles/${role.id}` : "/api/admin/roles";
 
-    const method = isEdit ? "PUT" : "POST";
-
     try {
       const response = await fetch(endpoint, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
         cache: "no-store",
         body: JSON.stringify(payload),
       });
 
-      const result = await parseMutationResponse(response);
+      const result = await parseApiResponse<RoleMutationResponse>(
+        response,
+        "ROLE MUTATION",
+      );
 
       if (!response.ok || !result.success) {
         toast.error(
@@ -191,7 +149,6 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
               ? `Unable to update role (${response.status}).`
               : `Unable to create role (${response.status}).`),
         );
-
         return;
       }
 
@@ -204,16 +161,11 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
 
       const roleId = result.data?.id ?? role?.id;
 
-      if (roleId) {
-        router.replace(`/roles/${roleId}`);
-      } else {
-        router.replace("/roles");
-      }
-
-      router.refresh();
+      startNavigation(() => {
+        router.replace(roleId ? `/roles/${roleId}` : "/roles");
+      });
     } catch (error) {
       console.error("[ROLE FORM]", error);
-
       toast.error("Central API is unavailable.");
     }
   }
@@ -222,7 +174,6 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
     <Card className="shadow-none">
       <CardHeader>
         <CardTitle>{isEdit ? "Edit role" : "Role information"}</CardTitle>
-
         <CardDescription>
           {isEdit
             ? "Update role information and permissions."
@@ -240,19 +191,16 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
           {isEdit && role ? (
             <div className="flex flex-wrap gap-2">
               <StatusBadge status={role.scope} />
-
               <StatusBadge status={role.system ? "SYSTEM" : "CUSTOM"} />
-
               {role.system ? <StatusBadge status={role.name} /> : null}
             </div>
           ) : null}
 
           <div className="space-y-2">
             <Label htmlFor="name">Role name</Label>
-
             <Input
               id="name"
-              disabled={isSubmitting || (isEdit && isSystemRole)}
+              disabled={pending || (isEdit && isSystemRole)}
               placeholder="CONTENT_REVIEWER"
               aria-invalid={Boolean(errors.name)}
               {...register("name")}
@@ -277,11 +225,10 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
-
             <Textarea
               id="description"
               rows={4}
-              disabled={isSubmitting}
+              disabled={pending}
               placeholder="Describe what this role is responsible for..."
               aria-invalid={Boolean(errors.description)}
               {...register("description")}
@@ -297,7 +244,6 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
           <div className="space-y-4">
             <div>
               <Label>Permissions</Label>
-
               <TypographyMuted className="mt-1">
                 Select the permissions granted to this website role.
               </TypographyMuted>
@@ -321,7 +267,7 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
                     <div className="mb-4 flex items-center gap-3">
                       <Checkbox
                         checked={allSelected}
-                        disabled={isSubmitting}
+                        disabled={pending}
                         onCheckedChange={(checked) =>
                           toggleGroup(group, checked === true)
                         }
@@ -351,7 +297,7 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
                           >
                             <Checkbox
                               checked={checked}
-                              disabled={isSubmitting}
+                              disabled={pending}
                               onCheckedChange={(value) =>
                                 togglePermission(
                                   permission.name,
@@ -393,31 +339,23 @@ export function RoleForm({ mode, permissions, role }: RoleFormProps) {
         <Button
           type="button"
           variant="outline"
-          disabled={isSubmitting}
-          onClick={() => {
-            if (isEdit && role) {
-              router.push(`/roles/${role.id}`);
-
-              return;
-            }
-
-            router.push("/roles");
-          }}
+          disabled={pending}
+          onClick={() =>
+            router.push(isEdit && role ? `/roles/${role.id}` : "/roles")
+          }
         >
           Cancel
         </Button>
 
-        <Button type="submit" form="role-form" disabled={isSubmitting}>
-          {isSubmitting ? (
+        <Button type="submit" form="role-form" disabled={pending}>
+          {pending ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-
               {isEdit ? "Saving..." : "Creating..."}
             </>
           ) : (
             <>
               <Save className="size-4" />
-
               {isEdit ? "Save changes" : "Create role"}
             </>
           )}

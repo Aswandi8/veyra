@@ -2,6 +2,7 @@ import { PageBreadcrumb } from "@/components/common/dashboard/page-breadcrumb";
 import { TypographyP } from "@/components/ui/typography";
 
 export default function DashboardPage() {
+  console.log("CENTRAL API URL:", process.env.CENTRAL_API_URL);
   return (
     <div className="space-y-6">
       <PageBreadcrumb

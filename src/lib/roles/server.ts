@@ -1,32 +1,59 @@
 import { cache } from "react";
-
 import { fetchCentralApiServer } from "@/lib/api/server";
-
+import type { RolesQuery } from "@/lib/roles/schema";
 import type {
   PermissionsResponse,
   RoleDetailResponse,
   RolesResponse,
 } from "@/lib/roles/types";
 
-export const getServerRoles = cache(async (): Promise<RolesResponse> => {
-  const response = await fetchCentralApiServer("/api/v1/admin/roles", {
-    method: "GET",
-  });
+export const getServerRoles = cache(
+  async (
+    q = "",
+    page = 1,
+    limit = 20,
+    sort: RolesQuery["sort"] = "name",
+    order: RolesQuery["order"] = "asc",
+    scope?: RolesQuery["scope"],
+    type?: RolesQuery["type"],
+  ): Promise<RolesResponse> => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+      sort,
+      order,
+    });
 
-  if (!response.ok) {
-    throw new Error(`Unable to load roles (${response.status})`);
-  }
+    const search = q.trim();
 
-  return (await response.json()) as RolesResponse;
-});
+    if (search) params.set("q", search);
+    if (scope) params.set("scope", scope);
+    if (type) params.set("type", type);
+
+    const response = await fetchCentralApiServer(
+      `/api/v1/admin/roles?${params.toString()}`,
+      { method: "GET" },
+    );
+
+    if (!response.ok) {
+      throw new Error(`Unable to load roles (${response.status})`);
+    }
+
+    const result = (await response.json()) as RolesResponse;
+
+    if (!result.success || !Array.isArray(result.data) || !result.pagination) {
+      throw new Error(result.error ?? "Invalid roles response");
+    }
+
+    return result;
+  },
+);
 
 export const getServerRole = cache(
   async (roleId: string): Promise<RoleDetailResponse> => {
     const response = await fetchCentralApiServer(
       `/api/v1/admin/roles/${encodeURIComponent(roleId)}`,
-      {
-        method: "GET",
-      },
+      { method: "GET" },
     );
 
     if (!response.ok) {

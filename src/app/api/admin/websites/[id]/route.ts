@@ -1,10 +1,4 @@
-import { NextResponse } from "next/server";
-
-import {
-  createProxyHeaders,
-  forwardSetCookies,
-  getCentralApiUrl,
-} from "@/lib/auth/proxy";
+import { proxyAdminRequest } from "@/lib/api/admin-proxy";
 
 interface RouteContext {
   params: Promise<{
@@ -12,89 +6,24 @@ interface RouteContext {
   }>;
 }
 
-function createProxyResponse(response: Response) {
-  const result = new NextResponse(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-  });
-
-  const contentType = response.headers.get("content-type");
-
-  if (contentType) {
-    result.headers.set("Content-Type", contentType);
-  }
-
-  result.headers.set("Cache-Control", "private, no-store, max-age=0");
-
-  forwardSetCookies(response, result.headers);
-
-  return result;
-}
-
 export async function PUT(request: Request, context: RouteContext) {
-  try {
-    const { id } = await context.params;
-    const body = await request.text();
+  const { id } = await context.params;
 
-    const headers = createProxyHeaders(request, {
-      includeCookie: true,
-    });
-
-    headers.set("Content-Type", "application/json");
-
-    const response = await fetch(
-      `${getCentralApiUrl()}/api/v1/admin/websites/${encodeURIComponent(id)}`,
-      {
-        method: "PUT",
-        headers,
-        body,
-        cache: "no-store",
-      },
-    );
-
-    return createProxyResponse(response);
-  } catch (error) {
-    console.error("[WEBSITE PUT PROXY]", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Central API unavailable",
-      },
-      {
-        status: 503,
-      },
-    );
-  }
+  return proxyAdminRequest(request, {
+    path: `/api/v1/admin/websites/${encodeURIComponent(id)}`,
+    method: "PUT",
+    forwardSearch: false,
+    label: "WEBSITE PUT PROXY",
+  });
 }
 
 export async function DELETE(request: Request, context: RouteContext) {
-  try {
-    const { id } = await context.params;
+  const { id } = await context.params;
 
-    const response = await fetch(
-      `${getCentralApiUrl()}/api/v1/admin/websites/${encodeURIComponent(id)}`,
-      {
-        method: "DELETE",
-        headers: createProxyHeaders(request, {
-          includeCookie: true,
-        }),
-        cache: "no-store",
-      },
-    );
-
-    return createProxyResponse(response);
-  } catch (error) {
-    console.error("[WEBSITE DELETE PROXY]", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Central API unavailable",
-      },
-      {
-        status: 503,
-      },
-    );
-  }
+  return proxyAdminRequest(request, {
+    path: `/api/v1/admin/websites/${encodeURIComponent(id)}`,
+    method: "DELETE",
+    forwardSearch: false,
+    label: "WEBSITE DELETE PROXY",
+  });
 }

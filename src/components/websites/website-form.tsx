@@ -1,5 +1,6 @@
 "use client";
 
+import { useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -7,7 +8,6 @@ import { useForm, useWatch } from "react-hook-form";
 import toast from "react-hot-toast";
 
 import { StatusBadge } from "@/components/common/status/status-badge";
-
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -29,6 +29,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { TypographyMuted } from "@/components/ui/typography";
 
+import { parseApiResponse } from "@/lib/api/response";
 import {
   websiteFormSchema,
   type WebsiteFormValues,
@@ -52,37 +53,9 @@ const WEBSITE_STATUSES: readonly WebsiteStatus[] = [
   "MAINTENANCE",
 ];
 
-async function parseMutationResponse(
-  response: Response,
-): Promise<WebsiteMutationResponse> {
-  const text = await response.text();
-
-  if (!text) {
-    return {
-      success: false,
-      error: `Server returned an empty response (${response.status})`,
-    };
-  }
-
-  try {
-    return JSON.parse(text) as WebsiteMutationResponse;
-  } catch {
-    console.error("[WEBSITE MUTATION INVALID RESPONSE]", {
-      status: response.status,
-      contentType: response.headers.get("content-type"),
-      body: text.slice(0, 500),
-    });
-
-    return {
-      success: false,
-      error: `Server returned an invalid response (${response.status})`,
-    };
-  }
-}
-
 export function WebsiteForm({ mode, website }: WebsiteFormProps) {
   const router = useRouter();
-
+  const [isNavigating, startNavigation] = useTransition();
   const isEdit = mode === "edit";
 
   const {
@@ -102,10 +75,8 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
     },
   });
 
-  const status = useWatch({
-    control,
-    name: "status",
-  });
+  const status = useWatch({ control, name: "status" });
+  const pending = isSubmitting || isNavigating;
 
   async function onSubmit(values: WebsiteFormValues) {
     const payload = {
@@ -124,15 +95,16 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
     try {
       const response = await fetch(endpoint, {
         method: isEdit ? "PUT" : "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
         cache: "no-store",
         body: JSON.stringify(payload),
       });
 
-      const result = await parseMutationResponse(response);
+      const result = await parseApiResponse<WebsiteMutationResponse>(
+        response,
+        "WEBSITE MUTATION",
+      );
 
       if (!response.ok || !result.success) {
         toast.error(
@@ -141,7 +113,6 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
               ? `Unable to update website (${response.status}).`
               : `Unable to create website (${response.status}).`),
         );
-
         return;
       }
 
@@ -154,16 +125,11 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
 
       const websiteId = result.data?.id ?? website?.id;
 
-      if (websiteId) {
-        router.replace(`/websites/${websiteId}`);
-      } else {
-        router.replace("/websites");
-      }
-
-      router.refresh();
+      startNavigation(() => {
+        router.replace(websiteId ? `/websites/${websiteId}` : "/websites");
+      });
     } catch (error) {
       console.error("[WEBSITE FORM]", error);
-
       toast.error("Central API is unavailable.");
     }
   }
@@ -172,7 +138,6 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
     <Card className="shadow-none">
       <CardHeader>
         <CardTitle>{isEdit ? "Edit website" : "Website information"}</CardTitle>
-
         <CardDescription>
           {isEdit
             ? "Update website information and status."
@@ -196,10 +161,9 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">Website name</Label>
-
               <Input
                 id="name"
-                disabled={isSubmitting}
+                disabled={pending}
                 placeholder="Arvane"
                 aria-invalid={Boolean(errors.name)}
                 {...register("name")}
@@ -214,10 +178,9 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
 
             <div className="space-y-2">
               <Label htmlFor="slug">Slug</Label>
-
               <Input
                 id="slug"
-                disabled={isSubmitting}
+                disabled={pending}
                 placeholder="arvane"
                 aria-invalid={Boolean(errors.slug)}
                 {...register("slug")}
@@ -237,10 +200,9 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="domain">Domain</Label>
-
             <Input
               id="domain"
-              disabled={isSubmitting}
+              disabled={pending}
               placeholder="arvane.com"
               aria-invalid={Boolean(errors.domain)}
               {...register("domain")}
@@ -259,11 +221,10 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="description">Description</Label>
-
             <Textarea
               id="description"
               rows={4}
-              disabled={isSubmitting}
+              disabled={pending}
               placeholder="Describe this website..."
               aria-invalid={Boolean(errors.description)}
               {...register("description")}
@@ -287,7 +248,7 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
                   shouldValidate: true,
                 })
               }
-              disabled={isSubmitting}
+              disabled={pending}
             >
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -315,21 +276,18 @@ export function WebsiteForm({ mode, website }: WebsiteFormProps) {
         <Button
           type="button"
           variant="outline"
-          disabled={isSubmitting}
-          onClick={() => {
-            if (isEdit && website) {
-              router.push(`/websites/${website.id}`);
-              return;
-            }
-
-            router.push("/websites");
-          }}
+          disabled={pending}
+          onClick={() =>
+            router.push(
+              isEdit && website ? `/websites/${website.id}` : "/websites",
+            )
+          }
         >
           Cancel
         </Button>
 
-        <Button type="submit" form="website-form" disabled={isSubmitting}>
-          {isSubmitting ? (
+        <Button type="submit" form="website-form" disabled={pending}>
+          {pending ? (
             <>
               <Loader2 className="size-4 animate-spin" />
               {isEdit ? "Saving..." : "Creating..."}

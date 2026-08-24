@@ -1,5 +1,6 @@
 "use client";
 
+import { useTransition } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, Send } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -7,7 +8,6 @@ import { Controller, useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 
 import { StatusBadge } from "@/components/common/status/status-badge";
-
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -28,60 +28,39 @@ import {
 } from "@/components/ui/select";
 import { TypographyMuted } from "@/components/ui/typography";
 
+import { parseApiResponse } from "@/lib/api/response";
 import {
   invitationFormSchema,
   type InvitationFormValues,
 } from "@/lib/invitations/schema";
-
 import type {
   InvitationMutationResponse,
   InvitationRoleOption,
 } from "@/lib/invitations/types";
+
+interface InvitationFormProps {
+  websiteId: string;
+  roles: InvitationRoleOption[];
+}
+
 function formatRoleName(name: string): string {
   return name
     .toLowerCase()
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
-interface InvitationFormProps {
-  websiteId: string;
-  roles: InvitationRoleOption[];
-}
-
-async function parseResponse(
-  response: Response,
-): Promise<InvitationMutationResponse> {
-  const text = await response.text();
-
-  if (!text) {
-    return {
-      success: false,
-      error: `Server returned an empty response (${response.status})`,
-    };
-  }
-
-  try {
-    return JSON.parse(text) as InvitationMutationResponse;
-  } catch {
-    return {
-      success: false,
-      error: `Server returned an invalid response (${response.status})`,
-    };
-  }
-}
 
 export function InvitationForm({ websiteId, roles }: InvitationFormProps) {
   const router = useRouter();
+  const [isNavigating, startNavigation] = useTransition();
 
   const {
     control,
     register,
     handleSubmit,
-
     formState: { errors, isSubmitting },
   } = useForm<InvitationFormValues>({
     resolver: zodResolver(invitationFormSchema),
-
     defaultValues: {
       name: "",
       email: "",
@@ -89,61 +68,57 @@ export function InvitationForm({ websiteId, roles }: InvitationFormProps) {
     },
   });
 
+  const pending = isSubmitting || isNavigating;
+
+  const roleItems = roles.map((role) => ({
+    value: role.id,
+    label: formatRoleName(role.name),
+  }));
+
   async function onSubmit(values: InvitationFormValues) {
     try {
       const response = await fetch(
         `/api/admin/websites/${websiteId}/invitations`,
         {
           method: "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-          },
-
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
-
           cache: "no-store",
-
           body: JSON.stringify({
             name: values.name.trim(),
-
             email: values.email.trim().toLowerCase(),
-
             roleId: values.roleId,
           }),
         },
       );
 
-      const result = await parseResponse(response);
+      const result = await parseApiResponse<InvitationMutationResponse>(
+        response,
+        "INVITATION CREATE",
+      );
 
       if (!response.ok || !result.success) {
         toast.error(
           result.error ?? `Unable to send invitation (${response.status}).`,
         );
-
         return;
       }
 
       toast.success(result.message ?? "Invitation sent successfully.");
 
-      router.replace(`/websites/${websiteId}/invitations`);
-
-      router.refresh();
+      startNavigation(() => {
+        router.replace(`/websites/${websiteId}/invitations`);
+      });
     } catch (error) {
       console.error("[INVITATION FORM]", error);
-
       toast.error("Central API is unavailable.");
     }
   }
-  const roleItems = roles.map((role) => ({
-    value: role.id,
-    label: formatRoleName(role.name),
-  }));
+
   return (
     <Card className="shadow-none">
       <CardHeader>
         <CardTitle>Invite member</CardTitle>
-
         <CardDescription>
           Send an invitation to join this website with a specific role.
         </CardDescription>
@@ -158,11 +133,10 @@ export function InvitationForm({ websiteId, roles }: InvitationFormProps) {
         >
           <div className="space-y-2">
             <Label htmlFor="name">Name</Label>
-
             <Input
               id="name"
               placeholder="John Doe"
-              disabled={isSubmitting}
+              disabled={pending}
               aria-invalid={Boolean(errors.name)}
               {...register("name")}
             />
@@ -176,12 +150,11 @@ export function InvitationForm({ websiteId, roles }: InvitationFormProps) {
 
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-
             <Input
               id="email"
               type="email"
               placeholder="john@example.com"
-              disabled={isSubmitting}
+              disabled={pending}
               aria-invalid={Boolean(errors.email)}
               {...register("email")}
             />
@@ -204,7 +177,7 @@ export function InvitationForm({ websiteId, roles }: InvitationFormProps) {
                   items={roleItems}
                   value={field.value}
                   onValueChange={field.onChange}
-                  disabled={isSubmitting}
+                  disabled={pending}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select role" />
@@ -242,14 +215,14 @@ export function InvitationForm({ websiteId, roles }: InvitationFormProps) {
         <Button
           type="button"
           variant="outline"
-          disabled={isSubmitting}
+          disabled={pending}
           onClick={() => router.push(`/websites/${websiteId}/invitations`)}
         >
           Cancel
         </Button>
 
-        <Button type="submit" form="invitation-form" disabled={isSubmitting}>
-          {isSubmitting ? (
+        <Button type="submit" form="invitation-form" disabled={pending}>
+          {pending ? (
             <>
               <Loader2 className="size-4 animate-spin" />
               Sending...

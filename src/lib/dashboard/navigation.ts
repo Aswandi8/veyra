@@ -8,7 +8,6 @@ import {
   Tags,
   Users,
   Video,
-  Share2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -91,15 +90,6 @@ export const DASHBOARD_NAVIGATION: readonly DashboardNavigationGroup[] = [
         icon: Video,
 
         permission: PERMISSIONS.video.read,
-
-        permissionScope: "WEBSITE",
-      },
-      {
-        label: "Social Shares",
-        href: "/social-shares",
-        icon: Share2,
-
-        permission: PERMISSIONS.socialShare.read,
 
         permissionScope: "WEBSITE",
       },

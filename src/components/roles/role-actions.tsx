@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-
+import { useEffect, useId, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
 import { Eye, Loader2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -19,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TypographyMuted, TypographyP } from "@/components/ui/typography";
 
+import { parseApiResponse } from "@/lib/api/response";
 import type { RoleDeleteResponse, RoleListItem } from "@/lib/roles/types";
 
 interface RoleActionsProps {
@@ -27,79 +26,43 @@ interface RoleActionsProps {
   canDelete: boolean;
 }
 
-async function parseDeleteResponse(
-  response: Response,
-): Promise<RoleDeleteResponse> {
-  const text = await response.text();
-
-  if (!text) {
-    return {
-      success: false,
-      error: `Server returned an empty response (${response.status})`,
-    };
-  }
-
-  try {
-    return JSON.parse(text) as RoleDeleteResponse;
-  } catch {
-    console.error("[ROLE DELETE INVALID RESPONSE]", {
-      status: response.status,
-      contentType: response.headers.get("content-type"),
-      body: text.slice(0, 500),
-    });
-
-    return {
-      success: false,
-      error: `Server returned an invalid response (${response.status})`,
-    };
-  }
-}
-
 function formatRoleName(name: string): string {
   return name.replaceAll("_", " ");
 }
 
 export function RoleActions({ role, canUpdate, canDelete }: RoleActionsProps) {
   const router = useRouter();
-
   const titleId = useId();
   const descriptionId = useId();
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [isRefreshing, startRefresh] = useTransition();
 
+  const pending = deleting || isRefreshing;
   const canEdit = canUpdate && role.name !== "SUPER_ADMIN";
-
   const canDeleteRole = canDelete && !role.system;
 
   useEffect(() => {
-    if (!deleteOpen) {
-      return;
-    }
+    if (!deleteOpen) return;
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !deleting) {
-        setDeleteOpen(false);
-      }
+      if (event.key === "Escape" && !pending) setDeleteOpen(false);
     }
 
     document.addEventListener("keydown", handleKeyDown);
 
     const previousOverflow = document.body.style.overflow;
-
     document.body.style.overflow = "hidden";
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-
       document.body.style.overflow = previousOverflow;
     };
-  }, [deleteOpen, deleting]);
+  }, [deleteOpen, pending]);
 
   async function handleDelete() {
-    if (deleting) {
-      return;
-    }
+    if (pending) return;
 
     setDeleting(true);
 
@@ -110,24 +73,26 @@ export function RoleActions({ role, canUpdate, canDelete }: RoleActionsProps) {
         cache: "no-store",
       });
 
-      const result = await parseDeleteResponse(response);
+      const result = await parseApiResponse<RoleDeleteResponse>(
+        response,
+        "ROLE DELETE",
+      );
 
       if (!response.ok || !result.success) {
         toast.error(
           result.error ?? `Unable to delete role (${response.status}).`,
         );
-
         return;
       }
 
       toast.success(result.message ?? "Role deleted successfully.");
-
       setDeleteOpen(false);
 
-      router.refresh();
+      startRefresh(() => {
+        router.refresh();
+      });
     } catch (error) {
       console.error("[ROLE DELETE]", error);
-
       toast.error("Central API is unavailable.");
     } finally {
       setDeleting(false);
@@ -195,7 +160,7 @@ export function RoleActions({ role, canUpdate, canDelete }: RoleActionsProps) {
                 type="button"
                 aria-label="Close delete confirmation"
                 className="absolute inset-0 bg-black/50"
-                disabled={deleting}
+                disabled={pending}
                 onClick={() => setDeleteOpen(false)}
               />
 
@@ -243,7 +208,7 @@ export function RoleActions({ role, canUpdate, canDelete }: RoleActionsProps) {
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={deleting}
+                    disabled={pending}
                     onClick={() => setDeleteOpen(false)}
                   >
                     Cancel
@@ -252,10 +217,10 @@ export function RoleActions({ role, canUpdate, canDelete }: RoleActionsProps) {
                   <Button
                     type="button"
                     variant="destructive"
-                    disabled={deleting}
+                    disabled={pending}
                     onClick={handleDelete}
                   >
-                    {deleting ? (
+                    {pending ? (
                       <>
                         <Loader2 className="size-4 animate-spin" />
                         Deleting...

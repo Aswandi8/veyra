@@ -1,16 +1,13 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-
+import { useEffect, useId, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
 import { Eye, Loader2, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { StatusBadge } from "@/components/common/status/status-badge";
-
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -21,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TypographyMuted, TypographyP } from "@/components/ui/typography";
 
+import { parseApiResponse } from "@/lib/api/response";
 import type { MemberListItem, MemberRemoveResponse } from "@/lib/members/types";
 
 interface MemberActionsProps {
@@ -28,36 +26,6 @@ interface MemberActionsProps {
   member: MemberListItem;
   canUpdate: boolean;
   canRemove: boolean;
-}
-
-async function parseRemoveResponse(
-  response: Response,
-): Promise<MemberRemoveResponse> {
-  const text = await response.text();
-
-  if (!text) {
-    return {
-      success: false,
-      error: `Server returned an empty response (${response.status})`,
-    };
-  }
-
-  try {
-    return JSON.parse(text) as MemberRemoveResponse;
-  } catch {
-    console.error("[MEMBER REMOVE INVALID RESPONSE]", {
-      status: response.status,
-
-      contentType: response.headers.get("content-type"),
-
-      body: text.slice(0, 500),
-    });
-
-    return {
-      success: false,
-      error: `Server returned an invalid response (${response.status})`,
-    };
-  }
 }
 
 function RemoveMemberDialog({
@@ -72,88 +40,72 @@ function RemoveMemberDialog({
   onOpenChange: (value: boolean) => void;
 }) {
   const router = useRouter();
-
   const titleId = useId();
-
   const descriptionId = useId();
 
   const [removing, setRemoving] = useState(false);
+  const [isRefreshing, startRefresh] = useTransition();
+  const pending = removing || isRefreshing;
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
+    if (!open) return;
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !removing) {
-        onOpenChange(false);
-      }
+      if (event.key === "Escape" && !pending) onOpenChange(false);
     }
 
     document.addEventListener("keydown", handleKeyDown);
 
     const previousOverflow = document.body.style.overflow;
-
     document.body.style.overflow = "hidden";
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-
       document.body.style.overflow = previousOverflow;
     };
-  }, [open, removing, onOpenChange]);
+  }, [open, pending, onOpenChange]);
 
   async function handleRemove() {
-    if (removing) {
-      return;
-    }
+    if (pending) return;
 
     setRemoving(true);
 
     try {
       const response = await fetch(`/api/admin/websites/${websiteId}/members`, {
         method: "DELETE",
-
-        headers: {
-          "Content-Type": "application/json",
-        },
-
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
-
         cache: "no-store",
-
-        body: JSON.stringify({
-          userId: member.userId,
-        }),
+        body: JSON.stringify({ userId: member.userId }),
       });
 
-      const result = await parseRemoveResponse(response);
+      const result = await parseApiResponse<MemberRemoveResponse>(
+        response,
+        "MEMBER REMOVE",
+      );
 
       if (!response.ok || !result.success) {
         toast.error(
           result.error ?? `Unable to remove member (${response.status}).`,
         );
-
         return;
       }
 
       toast.success(result.message ?? "Member removed successfully.");
-
       onOpenChange(false);
 
-      router.refresh();
+      startRefresh(() => {
+        router.refresh();
+      });
     } catch (error) {
       console.error("[MEMBER REMOVE]", error);
-
       toast.error("Central API is unavailable.");
     } finally {
       setRemoving(false);
     }
   }
 
-  if (!open || typeof document === "undefined") {
-    return null;
-  }
+  if (!open || typeof document === "undefined") return null;
 
   return createPortal(
     <div
@@ -164,7 +116,7 @@ function RemoveMemberDialog({
         type="button"
         aria-label="Close remove member confirmation"
         className="absolute inset-0 bg-black/50"
-        disabled={removing}
+        disabled={pending}
         onClick={() => onOpenChange(false)}
       />
 
@@ -190,7 +142,6 @@ function RemoveMemberDialog({
 
         <div className="mt-5 rounded-lg border bg-muted/30 p-4">
           <TypographyP className="font-medium">{member.name}</TypographyP>
-
           <TypographyMuted className="mt-1">{member.email}</TypographyMuted>
 
           <div className="mt-3">
@@ -209,7 +160,7 @@ function RemoveMemberDialog({
           <Button
             type="button"
             variant="outline"
-            disabled={removing}
+            disabled={pending}
             onClick={() => onOpenChange(false)}
           >
             Cancel
@@ -218,10 +169,10 @@ function RemoveMemberDialog({
           <Button
             type="button"
             variant="destructive"
-            disabled={removing}
+            disabled={pending}
             onClick={handleRemove}
           >
-            {removing ? (
+            {pending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
                 Removing...

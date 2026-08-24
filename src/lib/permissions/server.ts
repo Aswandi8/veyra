@@ -8,67 +8,37 @@ import { AUTH_ROUTES } from "@/lib/auth/constants";
 
 import type { AdminAccess, AdminAccessResponse } from "@/lib/permissions/types";
 
-/* ============================================================
-   ADMIN ACCESS
-   ============================================================ */
+// ============================================================
+// ADMIN ACCESS
+// ============================================================
 
 export const getServerAdminAccess = cache(
   async (): Promise<AdminAccess | null> => {
-    /*
-     * Tidak ada cookie sama sekali:
-     *
-     * user belum authenticated.
-     *
-     * Kita return null tanpa melakukan
-     * request Central API.
-     */
-
     const cookieHeader = await getServerCookieHeader();
 
     if (!cookieHeader) {
       return null;
     }
 
-    /* ======================================================
-         REQUEST
-         ====================================================== */
+    // ========================================================
+    // REQUEST
+    // ========================================================
 
     const response = await fetchCentralApiServer("/api/v1/admin/me", {
       method: "GET",
     });
 
-    /* ======================================================
-         401
-         ====================================================== */
+    // ========================================================
+    // UNAUTHENTICATED
+    // ========================================================
 
     if (response.status === 401) {
       return null;
     }
 
-    /* ======================================================
-         403
-         ====================================================== */
-
-    if (response.status === 403) {
-      redirect(AUTH_ROUTES.forbidden);
-    }
-
-    /* ======================================================
-         SERVER ERROR
-         ====================================================== */
-
-    if (!response.ok) {
-      console.error(
-        "[GET SERVER ADMIN ACCESS] Central API returned:",
-        response.status,
-      );
-
-      throw new Error(`Unable to load admin access (${response.status})`);
-    }
-
-    /* ======================================================
-         JSON
-         ====================================================== */
+    // ========================================================
+    // JSON
+    // ========================================================
 
     let data: AdminAccessResponse;
 
@@ -80,17 +50,49 @@ export const getServerAdminAccess = cache(
       throw new Error("Invalid admin access response");
     }
 
-    /* ======================================================
-         VALIDATION
-         ====================================================== */
+    // ========================================================
+    // ACCOUNT / ACCESS ERROR
+    // ========================================================
 
-    if (!data.success || !data.user) {
+    if (response.status === 403) {
+      const accountErrors = new Set([
+        "account-banned",
+        "account-suspended",
+        "account-inactive",
+        "email-not-verified",
+      ]);
+
+      if (data.code && accountErrors.has(data.code)) {
+        redirect(`${AUTH_ROUTES.login}?error=${encodeURIComponent(data.code)}`);
+      }
+
+      redirect(AUTH_ROUTES.forbidden);
+    }
+
+    // ========================================================
+    // SERVER ERROR
+    // ========================================================
+
+    if (!response.ok) {
+      console.error(
+        "[GET SERVER ADMIN ACCESS] Central API returned:",
+        response.status,
+      );
+
+      throw new Error(`Unable to load admin access (${response.status})`);
+    }
+
+    // ========================================================
+    // VALIDATION
+    // ========================================================
+
+    if (!data.success || !data.session || !data.user) {
       throw new Error("Invalid admin access response");
     }
 
-    /* ======================================================
-         NORMALIZE
-         ====================================================== */
+    // ========================================================
+    // NORMALIZE
+    // ========================================================
 
     const globalRoles = Array.isArray(data.globalRoles) ? data.globalRoles : [];
 
@@ -108,11 +110,13 @@ export const getServerAdminAccess = cache(
         }))
       : [];
 
-    /* ======================================================
-         RESULT
-         ====================================================== */
+    // ========================================================
+    // RESULT
+    // ========================================================
 
     return {
+      session: data.session,
+
       user: {
         ...data.user,
 

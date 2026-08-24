@@ -30,11 +30,19 @@ export interface RoleListItem {
   updatedAt: string;
 }
 
+export interface RolesPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
 export type RoleDetail = RoleListItem;
 
 export interface RolesResponse {
   success: boolean;
   data: RoleListItem[];
+  pagination: RolesPagination;
   error?: string;
 }
 
@@ -55,19 +63,14 @@ export interface RoleMutationResponse {
   message?: string;
   data?: RoleListItem;
   error?: string;
-  invalidPermissions?: string[];
 }
 
 export interface RoleDeleteResponse {
   success: boolean;
   message?: string;
-  error?: string;
   data?: {
     id: string;
     name: string;
   };
-  globalUserCount?: number;
-  websiteUserCount?: number;
-  userCount?: number;
-  invitationCount?: number;
+  error?: string;
 }

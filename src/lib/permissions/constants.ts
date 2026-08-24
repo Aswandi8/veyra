@@ -66,10 +66,4 @@ export const PERMISSIONS = {
     create: "api_client.create",
     revoke: "api_client.revoke",
   },
-  socialShare: {
-    read: "social_share.read",
-    create: "social_share.create",
-    update: "social_share.update",
-    delete: "social_share.delete",
-  },
 } as const;

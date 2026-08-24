@@ -1,8 +1,22 @@
 import type { AuthUserStatus } from "@/lib/auth/types";
-
 export type AdminRoleScope = "GLOBAL" | "WEBSITE";
-
 export type AdminWebsiteStatus = "ACTIVE" | "INACTIVE" | "MAINTENANCE";
+
+// ============================================================
+// SESSION
+// ============================================================
+
+export interface AdminAccessSession {
+  id: string;
+  userId: string;
+  expiresAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ============================================================
+// USER
+// ============================================================
 
 export interface AdminAccessUser {
   id: string;
@@ -14,12 +28,20 @@ export interface AdminAccessUser {
   banned: boolean;
 }
 
+// ============================================================
+// ROLE
+// ============================================================
+
 export interface AdminRole {
   id: string;
   name: string;
   description: string | null;
   scope: AdminRoleScope;
 }
+
+// ============================================================
+// WEBSITE
+// ============================================================
 
 export interface AdminWebsiteAccess {
   id: string;
@@ -32,7 +54,13 @@ export interface AdminWebsiteAccess {
   permissions: string[];
 }
 
+// ============================================================
+// ACCESS
+// ============================================================
+
 export interface AdminAccess {
+  session: AdminAccessSession;
+
   user: AdminAccessUser;
 
   superAdmin: boolean;
@@ -44,8 +72,14 @@ export interface AdminAccess {
   websites: AdminWebsiteAccess[];
 }
 
+// ============================================================
+// API RESPONSE
+// ============================================================
+
 export interface AdminAccessResponse {
   success: boolean;
+
+  session?: AdminAccessSession;
 
   user?: AdminAccessUser;
 
@@ -58,4 +92,6 @@ export interface AdminAccessResponse {
   websites?: AdminWebsiteAccess[];
 
   error?: string;
+
+  code?: string;
 }

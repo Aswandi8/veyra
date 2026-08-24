@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-
+import { useEffect, useId, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
 import {
   Eye,
   Loader2,
@@ -18,7 +16,6 @@ import {
 import toast from "react-hot-toast";
 
 import { StatusBadge } from "@/components/common/status/status-badge";
-
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -29,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TypographyMuted, TypographyP } from "@/components/ui/typography";
 
+import { parseApiResponse } from "@/lib/api/response";
 import type {
   WebsiteDeleteResponse,
   WebsiteListItem,
@@ -46,34 +44,6 @@ interface WebsiteDeleteButtonProps {
   disabled?: boolean;
 }
 
-async function parseDeleteResponse(
-  response: Response,
-): Promise<WebsiteDeleteResponse> {
-  const text = await response.text();
-
-  if (!text) {
-    return {
-      success: false,
-      error: `Server returned an empty response (${response.status})`,
-    };
-  }
-
-  try {
-    return JSON.parse(text) as WebsiteDeleteResponse;
-  } catch {
-    console.error("[WEBSITE DELETE INVALID RESPONSE]", {
-      status: response.status,
-      contentType: response.headers.get("content-type"),
-      body: text.slice(0, 500),
-    });
-
-    return {
-      success: false,
-      error: `Server returned an invalid response (${response.status})`,
-    };
-  }
-}
-
 function WebsiteDeleteDialog({
   website,
   open,
@@ -88,17 +58,16 @@ function WebsiteDeleteDialog({
   const router = useRouter();
   const titleId = useId();
   const descriptionId = useId();
+
   const [deleting, setDeleting] = useState(false);
+  const [isNavigating, startNavigation] = useTransition();
+  const pending = deleting || isNavigating;
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
+    if (!open) return;
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !deleting) {
-        onOpenChange(false);
-      }
+      if (event.key === "Escape" && !pending) onOpenChange(false);
     }
 
     document.addEventListener("keydown", handleKeyDown);
@@ -110,12 +79,10 @@ function WebsiteDeleteDialog({
       document.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousOverflow;
     };
-  }, [open, deleting, onOpenChange]);
+  }, [open, pending, onOpenChange]);
 
   async function handleDelete() {
-    if (deleting) {
-      return;
-    }
+    if (pending) return;
 
     setDeleting(true);
 
@@ -126,7 +93,10 @@ function WebsiteDeleteDialog({
         cache: "no-store",
       });
 
-      const result = await parseDeleteResponse(response);
+      const result = await parseApiResponse<WebsiteDeleteResponse>(
+        response,
+        "WEBSITE DELETE",
+      );
 
       if (!response.ok || !result.success) {
         toast.error(
@@ -136,14 +106,16 @@ function WebsiteDeleteDialog({
       }
 
       toast.success(result.message ?? "Website deleted successfully.");
-
       onOpenChange(false);
 
-      if (redirectAfterDelete) {
-        router.replace("/websites");
-      }
+      startNavigation(() => {
+        if (redirectAfterDelete) {
+          router.replace("/websites");
+          return;
+        }
 
-      router.refresh();
+        router.refresh();
+      });
     } catch (error) {
       console.error("[WEBSITE DELETE]", error);
       toast.error("Central API is unavailable.");
@@ -152,9 +124,7 @@ function WebsiteDeleteDialog({
     }
   }
 
-  if (!open || typeof document === "undefined") {
-    return null;
-  }
+  if (!open || typeof document === "undefined") return null;
 
   return createPortal(
     <div
@@ -165,7 +135,7 @@ function WebsiteDeleteDialog({
         type="button"
         aria-label="Close delete confirmation"
         className="absolute inset-0 bg-black/50"
-        disabled={deleting}
+        disabled={pending}
         onClick={() => onOpenChange(false)}
       />
 
@@ -213,7 +183,7 @@ function WebsiteDeleteDialog({
           <Button
             type="button"
             variant="outline"
-            disabled={deleting}
+            disabled={pending}
             onClick={() => onOpenChange(false)}
           >
             Cancel
@@ -222,10 +192,10 @@ function WebsiteDeleteDialog({
           <Button
             type="button"
             variant="destructive"
-            disabled={deleting}
+            disabled={pending}
             onClick={handleDelete}
           >
-            {deleting ? (
+            {pending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
                 Deleting...
@@ -346,9 +316,7 @@ export function WebsiteActions({
               <DropdownMenuItem
                 disabled={hasBlockingData}
                 onClick={() => {
-                  if (!hasBlockingData) {
-                    setDeleteOpen(true);
-                  }
+                  if (!hasBlockingData) setDeleteOpen(true);
                 }}
                 className="text-destructive focus:text-destructive"
               >

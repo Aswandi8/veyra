@@ -1,10 +1,4 @@
-import { NextResponse } from "next/server";
-
-import {
-  createProxyHeaders,
-  forwardSetCookies,
-  getCentralApiUrl,
-} from "@/lib/auth/proxy";
+import { proxyAdminRequest } from "@/lib/api/admin-proxy";
 
 interface RouteContext {
   params: Promise<{
@@ -14,50 +8,14 @@ interface RouteContext {
 }
 
 export async function DELETE(request: Request, context: RouteContext) {
-  try {
-    const { id, invitationId } = await context.params;
+  const { id, invitationId } = await context.params;
 
-    const response = await fetch(
-      `${getCentralApiUrl()}/api/v1/admin/websites/${encodeURIComponent(
-        id,
-      )}/invitations/${encodeURIComponent(invitationId)}`,
-      {
-        method: "DELETE",
-
-        headers: createProxyHeaders(request, {
-          includeCookie: true,
-        }),
-
-        cache: "no-store",
-      },
-    );
-
-    const result = new NextResponse(response.body, {
-      status: response.status,
-    });
-
-    const contentType = response.headers.get("content-type");
-
-    if (contentType) {
-      result.headers.set("Content-Type", contentType);
-    }
-
-    result.headers.set("Cache-Control", "private, no-store, max-age=0");
-
-    forwardSetCookies(response, result.headers);
-
-    return result;
-  } catch (error) {
-    console.error("[INVITATION REVOKE PROXY]", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Central API unavailable",
-      },
-      {
-        status: 503,
-      },
-    );
-  }
+  return proxyAdminRequest(request, {
+    path: `/api/v1/admin/websites/${encodeURIComponent(
+      id,
+    )}/invitations/${encodeURIComponent(invitationId)}`,
+    method: "DELETE",
+    forwardSearch: false,
+    label: "INVITATION REVOKE PROXY",
+  });
 }

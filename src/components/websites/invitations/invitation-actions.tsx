@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
-
+import { useEffect, useId, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-
 import { Ban, Loader2, MoreHorizontal } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { StatusBadge } from "@/components/common/status/status-badge";
-
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { TypographyMuted, TypographyP } from "@/components/ui/typography";
 
+import { parseApiResponse } from "@/lib/api/response";
 import type {
   InvitationListItem,
   InvitationRevokeResponse,
@@ -30,73 +28,43 @@ interface InvitationActionsProps {
   canRevoke: boolean;
 }
 
-async function parseResponse(
-  response: Response,
-): Promise<InvitationRevokeResponse> {
-  const text = await response.text();
-
-  if (!text) {
-    return {
-      success: false,
-      error: `Server returned an empty response (${response.status})`,
-    };
-  }
-
-  try {
-    return JSON.parse(text) as InvitationRevokeResponse;
-  } catch {
-    return {
-      success: false,
-      error: `Server returned an invalid response (${response.status})`,
-    };
-  }
-}
-
 export function InvitationActions({
   websiteId,
   invitation,
   canRevoke,
 }: InvitationActionsProps) {
   const router = useRouter();
-
   const titleId = useId();
-
   const descriptionId = useId();
 
   const [open, setOpen] = useState(false);
-
   const [revoking, setRevoking] = useState(false);
+  const [isRefreshing, startRefresh] = useTransition();
+
+  const pending = revoking || isRefreshing;
 
   const canRevokeInvitation = canRevoke && invitation.status === "PENDING";
 
   useEffect(() => {
-    if (!open) {
-      return;
-    }
+    if (!open) return;
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape" && !revoking) {
-        setOpen(false);
-      }
+      if (event.key === "Escape" && !pending) setOpen(false);
     }
 
     document.addEventListener("keydown", handleKeyDown);
 
     const previousOverflow = document.body.style.overflow;
-
     document.body.style.overflow = "hidden";
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-
       document.body.style.overflow = previousOverflow;
     };
-  }, [open, revoking]);
+  }, [open, pending]);
 
   async function handleRevoke() {
-    if (revoking) {
-      return;
-    }
+    if (pending) return;
 
     setRevoking(true);
 
@@ -105,39 +73,38 @@ export function InvitationActions({
         `/api/admin/websites/${websiteId}/invitations/${invitation.id}`,
         {
           method: "DELETE",
-
           credentials: "include",
-
           cache: "no-store",
         },
       );
 
-      const result = await parseResponse(response);
+      const result = await parseApiResponse<InvitationRevokeResponse>(
+        response,
+        "INVITATION REVOKE",
+      );
 
       if (!response.ok || !result.success) {
         toast.error(
           result.error ?? `Unable to revoke invitation (${response.status}).`,
         );
-
         return;
       }
 
       toast.success(result.message ?? "Invitation revoked successfully.");
-
       setOpen(false);
-      router.refresh();
+
+      startRefresh(() => {
+        router.refresh();
+      });
     } catch (error) {
       console.error("[INVITATION REVOKE]", error);
-
       toast.error("Central API is unavailable.");
     } finally {
       setRevoking(false);
     }
   }
 
-  if (!canRevokeInvitation) {
-    return null;
-  }
+  if (!canRevokeInvitation) return null;
 
   return (
     <>
@@ -173,7 +140,7 @@ export function InvitationActions({
                 type="button"
                 className="absolute inset-0 bg-black/50"
                 aria-label="Close revoke confirmation"
-                disabled={revoking}
+                disabled={pending}
                 onClick={() => setOpen(false)}
               />
 
@@ -203,7 +170,6 @@ export function InvitationActions({
 
                   <div className="mt-3 flex gap-2">
                     <StatusBadge status={invitation.role.name} />
-
                     <StatusBadge status={invitation.status} />
                   </div>
                 </div>
@@ -212,7 +178,7 @@ export function InvitationActions({
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={revoking}
+                    disabled={pending}
                     onClick={() => setOpen(false)}
                   >
                     Cancel
@@ -221,10 +187,10 @@ export function InvitationActions({
                   <Button
                     type="button"
                     variant="destructive"
-                    disabled={revoking}
+                    disabled={pending}
                     onClick={handleRevoke}
                   >
-                    {revoking ? (
+                    {pending ? (
                       <>
                         <Loader2 className="size-4 animate-spin" />
                         Revoking...
