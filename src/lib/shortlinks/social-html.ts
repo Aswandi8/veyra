@@ -17,11 +17,6 @@ interface PreviewDimensions {
   height: number | null;
 }
 
-interface PlayerDimensions {
-  width: number;
-  height: number;
-}
-
 function cleanText(
   value: string | null | undefined,
   fallback: string,
@@ -79,24 +74,17 @@ function getImageDimensions(shortLink: PublicShortLink): PreviewDimensions {
   };
 }
 
-function getPlayerDimensions(
-  shortLink: PublicShortLink,
-): PlayerDimensions | null {
+function getVideoDimensions(shortLink: PublicShortLink): PreviewDimensions {
   if (shortLink.previewType !== "VIDEO") {
-    return null;
-  }
-
-  const width = normalizeDimension(shortLink.previewVideoWidth);
-
-  const height = normalizeDimension(shortLink.previewVideoHeight);
-
-  if (!width || !height) {
-    return null;
+    return {
+      width: null,
+      height: null,
+    };
   }
 
   return {
-    width,
-    height,
+    width: normalizeDimension(shortLink.previewVideoWidth),
+    height: normalizeDimension(shortLink.previewVideoHeight),
   };
 }
 
@@ -197,12 +185,6 @@ export function getShortLinkSocialMedia(
     sourceImageMimeType === "image/svg+xml" ||
     getExtension(originalImageUrl) === "svg";
 
-  /*
-   * SVG tidak digunakan langsung sebagai social poster.
-   *
-   * Jika source berasal dari Cloudinary, gunakan representasi JPG.
-   * Ini hanya poster/fallback dan tidak pernah menggantikan VIDEO.
-   */
   if (originalImageUrl && isSvg && isCloudinaryUploadImage(originalImageUrl)) {
     sourceImageUrl = createCloudinarySocialJpeg(originalImageUrl);
     sourceImageMimeType = "image/jpeg";
@@ -211,11 +193,6 @@ export function getShortLinkSocialMedia(
     sourceImageMimeType = null;
   }
 
-  /*
-   * VIDEO hanya mengambil previewVideoUrl ketika previewType === VIDEO.
-   *
-   * Tidak ada fallback VIDEO -> IMAGE.
-   */
   const videoUrl =
     shortLink.previewType === "VIDEO"
       ? normalizeHttpUrl(shortLink.previewVideoUrl)
@@ -282,10 +259,6 @@ function getGeneratedPreviewUrl(
   return `${base}/preview?v=${version}`;
 }
 
-function getPlayerUrl(canonicalUrl: string): string {
-  return `${canonicalUrl.replace(/\/+$/, "")}/player`;
-}
-
 export function createShortLinkSocialHtml({
   shortLink,
   canonicalUrl,
@@ -297,46 +270,22 @@ export function createShortLinkSocialHtml({
 
   const media = getShortLinkSocialMedia(shortLink);
 
-  const isVideo = shortLink.previewType === "VIDEO";
   const isImage = shortLink.previewType === "IMAGE";
+  const isVideo = shortLink.previewType === "VIDEO";
 
   const imageDimensions = getImageDimensions(shortLink);
-  const playerDimensions = getPlayerDimensions(shortLink);
+  const videoDimensions = getVideoDimensions(shortLink);
 
-  /*
-   * IMAGE:
-   * /preview tetap boleh digunakan karena memang jalur IMAGE.
-   *
-   * VIDEO:
-   * jangan gunakan generated preview sebagai media utama.
-   */
   const generatedImagePreviewUrl =
     isImage && media.sourceImageUrl
       ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
       : null;
 
-  /*
-   * VIDEO dianggap valid hanya jika previewVideoUrl tersedia.
-   */
-  const validVideo = isVideo && Boolean(media.videoUrl);
-
-  /*
-   * Player Card hanya valid jika VIDEO mempunyai:
-   *
-   * - previewVideoUrl
-   * - previewVideoWidth
-   * - previewVideoHeight
-   */
-  const validPlayer = validVideo && Boolean(playerDimensions);
-
-  const playerUrl = validPlayer ? getPlayerUrl(normalizedCanonical) : null;
-
-  /*
-   * Poster X hanya fallback visual Player Card.
-   *
-   * Ini BUKAN media utama dan tidak menggantikan previewVideoUrl.
-   */
-  const twitterPosterUrl = validPlayer ? media.sourceImageUrl : null;
+  const validVideo =
+    isVideo &&
+    Boolean(media.videoUrl) &&
+    Boolean(videoDimensions.width) &&
+    Boolean(videoDimensions.height);
 
   const tags = [
     meta("name", "robots", "noindex,follow"),
@@ -354,9 +303,7 @@ export function createShortLinkSocialHtml({
     meta("property", "og:url", normalizedCanonical),
 
     // ========================================================
-    // IMAGE ONLY
-    //
-    // VIDEO tidak lagi diarahkan ke generated preview.
+    // IMAGE PREVIEW
     // ========================================================
 
     meta("property", "og:image", isImage ? generatedImagePreviewUrl : null),
@@ -392,10 +339,13 @@ export function createShortLinkSocialHtml({
     ),
 
     // ========================================================
-    // VIDEO ONLY
+    // VIDEO SOURCE
     //
-    // Source utama = previewVideoUrl.
-    // Width/height = metadata video asli.
+    // Tidak ada X Player Card.
+    // Tidak ada /player.
+    // Tidak ada twitter:image fallback.
+    //
+    // Video menggunakan source dan dimensi asli.
     // ========================================================
 
     meta("property", "og:video", validVideo ? media.videoUrl : null),
@@ -407,50 +357,14 @@ export function createShortLinkSocialHtml({
     numberMeta(
       "property",
       "og:video:width",
-      validVideo ? shortLink.previewVideoWidth : null,
+      validVideo ? videoDimensions.width : null,
     ),
 
     numberMeta(
       "property",
       "og:video:height",
-      validVideo ? shortLink.previewVideoHeight : null,
+      validVideo ? videoDimensions.height : null,
     ),
-
-    // ========================================================
-    // X PLAYER CARD — VIDEO ONLY
-    // ========================================================
-
-    meta("name", "twitter:card", validPlayer ? "player" : null),
-
-    meta("name", "twitter:title", validPlayer ? title : null),
-
-    meta("name", "twitter:description", validPlayer ? description : null),
-
-    /*
-     * Poster/fallback image.
-     *
-     * Tidak memakai /preview.
-     * Tidak menggantikan VIDEO.
-     */
-    meta("name", "twitter:image", twitterPosterUrl),
-
-    meta("name", "twitter:image:alt", twitterPosterUrl ? title : null),
-
-    /*
-     * Player VIDEO.
-     */
-    meta("name", "twitter:player", playerUrl),
-
-    /*
-     * Tidak ada hardcode 720x1280, 16:9, portrait, landscape,
-     * atau square.
-     *
-     * Nilai berasal langsung dari previewVideoWidth /
-     * previewVideoHeight.
-     */
-    numberMeta("name", "twitter:player:width", playerDimensions?.width),
-
-    numberMeta("name", "twitter:player:height", playerDimensions?.height),
   ]
     .filter(Boolean)
     .join("\n");
