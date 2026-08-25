@@ -2,7 +2,7 @@ import type { ReactElement } from "react";
 
 interface ShortLinkSocialPreviewProps {
   imageUrl: string;
-  title: string;
+  title?: string | null;
   width: number;
   height: number;
   showPlayButton: boolean;
@@ -21,13 +21,13 @@ export function ShortLinkSocialPreview({
   showPlayButton,
   displayDuration,
 }: ShortLinkSocialPreviewProps): ReactElement {
-  const normalizedTitle = title.trim() || "ShortLink";
+  const normalizedTitle = title?.trim() || "ShortLink";
 
   /*
-   * Overlay mengikuti ukuran media asli.
+   * Semua overlay mengikuti ukuran media asli.
    *
-   * Sisi terpendek 720px = scale 1.
-   * Tidak bergantung pada landscape / portrait.
+   * Tidak ada hardcoded aspect ratio.
+   * Tidak ada hardcoded portrait / landscape / square.
    */
   const shortSide = Math.min(width, height);
 
@@ -53,13 +53,33 @@ export function ShortLinkSocialPreview({
 
   const playIconOffset = Math.round(6 * scale);
 
+  /*
+   * Center horizontal + vertical berdasarkan
+   * dimensi media asli.
+   *
+   * Rumus ini dinamis:
+   *
+   * left = (width - playSize) / 2
+   * top  = (height - playSize) / 2
+   *
+   * Jadi tetap center untuk:
+   *
+   * portrait
+   * landscape
+   * square
+   * ukuran apa pun
+   */
+  const playLeft = Math.round((width - playSize) / 2);
+
+  const playTop = Math.round((height - playSize) / 2);
+
   return (
     <div
       style={{
-        width: "100%",
-        height: "100%",
         position: "relative",
         display: "flex",
+        width: `${width}px`,
+        height: `${height}px`,
         overflow: "hidden",
       }}
     >
@@ -68,9 +88,12 @@ export function ShortLinkSocialPreview({
         src={imageUrl}
         alt=""
         style={{
-          width: "100%",
-          height: "100%",
+          position: "absolute",
+          left: 0,
+          top: 0,
           display: "flex",
+          width: `${width}px`,
+          height: `${height}px`,
         }}
       />
 
@@ -78,40 +101,33 @@ export function ShortLinkSocialPreview({
         <div
           style={{
             position: "absolute",
-            inset: 0,
+            left: playLeft,
+            top: playTop,
             display: "flex",
+            width: playSize,
+            height: playSize,
+            flexShrink: 0,
             alignItems: "center",
             justifyContent: "center",
-            pointerEvents: "none",
+            borderRadius: 9999,
+            background: "rgba(0,0,0,0.72)",
+            boxShadow: `0 ${Math.round(6 * scale)}px ${Math.round(
+              24 * scale,
+            )}px rgba(0,0,0,0.35)`,
           }}
         >
-          <div
+          <svg
+            width={playIconWidth}
+            height={playIconHeight}
+            viewBox="0 0 48 56"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
             style={{
-              width: playSize,
-              height: playSize,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 9999,
-              background: "rgba(0,0,0,0.72)",
-              boxShadow: `0 ${Math.round(6 * scale)}px ${Math.round(
-                24 * scale,
-              )}px rgba(0,0,0,0.35)`,
+              marginLeft: playIconOffset,
             }}
           >
-            <svg
-              width={playIconWidth}
-              height={playIconHeight}
-              viewBox="0 0 48 56"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              style={{
-                marginLeft: playIconOffset,
-              }}
-            >
-              <path d="M4 3L44 28L4 53V3Z" fill="white" />
-            </svg>
-          </div>
+            <path d="M4 3L44 28L4 53V3Z" fill="white" />
+          </svg>
         </div>
       ) : null}
 

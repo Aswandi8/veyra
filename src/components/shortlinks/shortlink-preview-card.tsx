@@ -48,21 +48,20 @@ interface ShortLinkPreviewCardProps {
   title?: string | null;
   description?: string | null;
 
-  destinationUrl?: string;
+  destinationUrl?: string | null;
 
-  thumbnailUrl?: string;
-  previewVideoUrl?: string;
+  thumbnailUrl?: string | null;
+  previewVideoUrl?: string | null;
 
   showPlayButton: boolean;
   displayDuration?: string | null;
 
-  publicUrl?: string;
+  publicUrl?: string | null;
 
-  shareUrl?: string;
+  shareUrl?: string | null;
   shareDisabled?: boolean;
 
   onImageMetadata?: (metadata: ImageMetadata) => void;
-
   onVideoMetadata?: (metadata: VideoMetadata) => void;
 }
 
@@ -112,8 +111,8 @@ export function ShortLinkPreviewCard({
 
   destinationUrl,
 
-  thumbnailUrl = "",
-  previewVideoUrl = "",
+  thumbnailUrl,
+  previewVideoUrl,
 
   showPlayButton,
   displayDuration,
@@ -126,9 +125,21 @@ export function ShortLinkPreviewCard({
   onImageMetadata,
   onVideoMetadata,
 }: ShortLinkPreviewCardProps) {
-  const rawImageUrl = thumbnailUrl.trim();
+  /*
+   * Field API tertentu boleh null.
+   * Normalisasi sebelum .trim().
+   */
+  const rawImageUrl = thumbnailUrl?.trim() ?? "";
 
-  const rawVideoUrl = previewVideoUrl.trim();
+  const rawVideoUrl = previewVideoUrl?.trim() ?? "";
+
+  const normalizedDisplayDuration = displayDuration?.trim() ?? "";
+
+  const normalizedDestinationUrl = destinationUrl?.trim() ?? "";
+
+  const normalizedPublicUrl = publicUrl?.trim() ?? "";
+
+  const normalizedShareUrl = shareUrl?.trim() ?? "";
 
   /*
    * URL dari form dapat berubah beberapa kali ketika user
@@ -189,6 +200,19 @@ export function ShortLinkPreviewCard({
       return;
     }
 
+    const width = image.naturalWidth;
+
+    const height = image.naturalHeight;
+
+    if (width <= 0 || height <= 0) {
+      setImageState({
+        url: imageUrl,
+        status: "error",
+      });
+
+      return;
+    }
+
     setImageState({
       url: imageUrl,
       status: "loaded",
@@ -196,8 +220,8 @@ export function ShortLinkPreviewCard({
 
     onImageMetadata?.({
       url: imageUrl,
-      width: image.naturalWidth,
-      height: image.naturalHeight,
+      width,
+      height,
     });
   }
 
@@ -219,6 +243,19 @@ export function ShortLinkPreviewCard({
       return;
     }
 
+    const width = video.videoWidth;
+
+    const height = video.videoHeight;
+
+    if (width <= 0 || height <= 0) {
+      setVideoState({
+        url: videoUrl,
+        status: "error",
+      });
+
+      return;
+    }
+
     setVideoState({
       url: videoUrl,
       status: "loaded",
@@ -227,13 +264,14 @@ export function ShortLinkPreviewCard({
     onVideoMetadata?.({
       url: videoUrl,
 
-      width: video.videoWidth,
+      width,
 
-      height: video.videoHeight,
+      height,
 
-      durationMs: Number.isFinite(video.duration)
-        ? Math.round(video.duration * 1000)
-        : null,
+      durationMs:
+        Number.isFinite(video.duration) && video.duration > 0
+          ? Math.round(video.duration * 1000)
+          : null,
     });
   }
 
@@ -279,6 +317,23 @@ export function ShortLinkPreviewCard({
       </CardHeader>
 
       <CardContent className="space-y-4">
+        {/*
+         * =====================================================
+         * MEDIA PREVIEW
+         *
+         * Ini CARD milik dashboard Veyra.
+         *
+         * Media di dalamnya tetap mempertahankan rasio asli:
+         *
+         * - tidak ada aspect-video
+         * - tidak ada aspect-square
+         * - tidak ada object-cover
+         * - tidak ada rasio 1200/630
+         *
+         * max-width / max-height hanya membatasi ukuran visual
+         * di dashboard, tidak mengubah aspect ratio media.
+         * =====================================================
+         */}
         <div className="relative flex min-h-64 items-center justify-center overflow-hidden rounded-lg border bg-muted/30">
           {previewType === "IMAGE" ? (
             <>
@@ -309,24 +364,46 @@ export function ShortLinkPreviewCard({
               ) : null}
 
               {imageUrl ? (
-                <img
-                  key={imageUrl}
-                  src={imageUrl}
-                  alt={previewTitle}
-                  onLoad={handleImageLoad}
-                  onError={handleImageError}
+                <div
                   className={
                     imageStatus === "loaded"
-                      ? "mx-auto h-auto max-h-[32rem] w-auto max-w-full"
+                      ? "relative inline-block max-w-full"
                       : "pointer-events-none absolute size-px opacity-0"
                   }
-                />
+                >
+                  <img
+                    key={imageUrl}
+                    src={imageUrl}
+                    alt={previewTitle}
+                    onLoad={handleImageLoad}
+                    onError={handleImageError}
+                    className="block h-auto max-h-[32rem] w-auto max-w-full"
+                  />
+
+                  {imageStatus === "loaded" && showPlayButton ? (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <div className="flex size-12 items-center justify-center rounded-full bg-black/70 text-white shadow-sm">
+                        <Play className="ml-0.5 size-5 fill-current" />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {imageStatus === "loaded" && normalizedDisplayDuration ? (
+                    <span className="pointer-events-none absolute right-2 bottom-2 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
+                      {normalizedDisplayDuration}
+                    </span>
+                  ) : null}
+                </div>
               ) : null}
             </>
           ) : null}
 
           {previewType === "VIDEO" ? (
             <>
+              {/*
+               * Poster hidden hanya untuk membaca
+               * naturalWidth/naturalHeight.
+               */}
               {imageUrl ? (
                 <img
                   key={`poster-metadata-${imageUrl}`}
@@ -442,21 +519,21 @@ export function ShortLinkPreviewCard({
                   ) : null}
                 </>
               ) : null}
+
+              {showPlayButton ? (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div className="flex size-12 items-center justify-center rounded-full bg-black/70 text-white shadow-sm">
+                    <Play className="ml-0.5 size-5 fill-current" />
+                  </div>
+                </div>
+              ) : null}
+
+              {normalizedDisplayDuration ? (
+                <span className="pointer-events-none absolute right-2 bottom-2 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
+                  {normalizedDisplayDuration}
+                </span>
+              ) : null}
             </>
-          ) : null}
-
-          {showPlayButton ? (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div className="flex size-12 items-center justify-center rounded-full bg-black/70 text-white shadow-sm">
-                <Play className="ml-0.5 size-5 fill-current" />
-              </div>
-            </div>
-          ) : null}
-
-          {displayDuration?.trim() ? (
-            <span className="pointer-events-none absolute right-2 bottom-2 rounded bg-black/80 px-1.5 py-0.5 text-xs font-medium text-white">
-              {displayDuration.trim()}
-            </span>
           ) : null}
         </div>
 
@@ -468,7 +545,7 @@ export function ShortLinkPreviewCard({
           </TypographyMuted>
 
           <TypographyMuted className="break-all">
-            {publicUrl || `/watch/${previewSlug}`}
+            {normalizedPublicUrl || `/watch/${previewSlug}`}
           </TypographyMuted>
         </div>
 
@@ -478,18 +555,18 @@ export function ShortLinkPreviewCard({
           <StatusBadge status={previewType} />
         </div>
 
-        {destinationUrl?.trim() ? (
+        {normalizedDestinationUrl ? (
           <div className="rounded-lg border bg-muted/30 p-3">
             <TypographyMuted>Destination</TypographyMuted>
 
             <TypographyP className="mt-1 break-all text-sm">
-              {destinationUrl.trim()}
+              {normalizedDestinationUrl}
             </TypographyP>
           </div>
         ) : null}
 
         <ShortLinkShareButton
-          url={shareUrl || ""}
+          url={normalizedShareUrl}
           title={title}
           description={description}
           disabled={shareDisabled}

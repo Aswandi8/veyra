@@ -20,16 +20,6 @@ interface PreviewDimensions {
   height: number;
 }
 
-/*
- * Defensive fallback untuk data lama yang tidak memiliki
- * metadata dimensions.
- *
- * Data ShortLink baru seharusnya menggunakan ukuran
- * thumbnail/poster asli.
- */
-const FALLBACK_WIDTH = 1200;
-const FALLBACK_HEIGHT = 630;
-
 function normalizeDimension(value: number | null | undefined): number | null {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return null;
@@ -38,46 +28,22 @@ function normalizeDimension(value: number | null | undefined): number | null {
   return Math.round(value);
 }
 
-function getPreviewDimensions(
-  thumbnailWidth: number | null | undefined,
-  thumbnailHeight: number | null | undefined,
-  videoWidth: number | null | undefined,
-  videoHeight: number | null | undefined,
-): PreviewDimensions {
-  const imageWidth = normalizeDimension(thumbnailWidth);
+function getImageDimensions(
+  width: number | null | undefined,
+  height: number | null | undefined,
+): PreviewDimensions | null {
+  const normalizedWidth = normalizeDimension(width);
 
-  const imageHeight = normalizeDimension(thumbnailHeight);
+  const normalizedHeight = normalizeDimension(height);
 
-  if (imageWidth && imageHeight) {
-    return {
-      width: imageWidth,
-      height: imageHeight,
-    };
-  }
-
-  const normalizedVideoWidth = normalizeDimension(videoWidth);
-
-  const normalizedVideoHeight = normalizeDimension(videoHeight);
-
-  if (normalizedVideoWidth && normalizedVideoHeight) {
-    return {
-      width: normalizedVideoWidth,
-
-      height: normalizedVideoHeight,
-    };
+  if (!normalizedWidth || !normalizedHeight) {
+    return null;
   }
 
   return {
-    width: FALLBACK_WIDTH,
-
-    height: FALLBACK_HEIGHT,
+    width: normalizedWidth,
+    height: normalizedHeight,
   };
-}
-
-function normalizeTitle(value: string | null): string {
-  const normalized = value?.trim();
-
-  return normalized ? normalized.slice(0, 120) : "ShortLink";
 }
 
 function normalizeDuration(value: string | null): string | null {
@@ -96,8 +62,8 @@ function getVersion(updatedAt: string): string {
   return updatedAt;
 }
 
-function imageErrorResponse(status: number): Response {
-  return new Response("Preview unavailable", {
+function imageErrorResponse(status: number, message = "Preview unavailable") {
+  return new Response(message, {
     status,
 
     headers: {
@@ -132,29 +98,45 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const shortLink = await getPublicShortLink(normalizedSlug);
 
+    /*
+     * /preview pada tahap ini khusus generated IMAGE preview.
+     */
+    if (shortLink.previewType !== "IMAGE") {
+      return imageErrorResponse(404);
+    }
+
     const media = getShortLinkSocialMedia(shortLink);
 
     if (!media.sourceImageUrl) {
       return imageErrorResponse(404);
     }
 
-    const dimensions = getPreviewDimensions(
+    /*
+     * Dimensi canvas WAJIB berasal dari thumbnail asli.
+     *
+     * Tidak ada:
+     *
+     * - 1200x630
+     * - 16:9
+     * - fallback dimensi VIDEO
+     * - fallback ukuran lainnya
+     */
+    const dimensions = getImageDimensions(
       shortLink.thumbnailWidth,
       shortLink.thumbnailHeight,
-      shortLink.previewVideoWidth,
-      shortLink.previewVideoHeight,
     );
+
+    if (!dimensions) {
+      return imageErrorResponse(
+        422,
+        "Original image dimensions are unavailable",
+      );
+    }
 
     return new ImageResponse(
       ShortLinkSocialPreview({
         imageUrl: media.sourceImageUrl,
-
-        title: normalizeTitle(shortLink.title),
-
-        /*
-         * Renderer sekarang mengetahui ukuran canvas asli
-         * agar seluruh overlay dapat melakukan scaling.
-         */
+        title: shortLink.title,
         width: dimensions.width,
 
         height: dimensions.height,

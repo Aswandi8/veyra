@@ -172,9 +172,9 @@ export function getShortLinkSocialMedia(
     getExtension(originalImageUrl) === "svg";
 
   /*
-   * Social crawler tidak selalu menerima SVG sebagai poster.
+   * SVG tidak digunakan langsung sebagai social image.
    *
-   * Jika source merupakan Cloudinary image, gunakan representasi JPG.
+   * Cloudinary SVG dikonversi ke JPG.
    */
   if (originalImageUrl && isSvg && isCloudinaryUploadImage(originalImageUrl)) {
     sourceImageUrl = createCloudinarySocialJpeg(originalImageUrl);
@@ -257,6 +257,7 @@ export function createShortLinkSocialHtml({
   const normalizedCanonical = normalizeHttpUrl(canonicalUrl) ?? canonicalUrl;
 
   const title = cleanText(shortLink.title, "Watch", 200);
+
   const description = cleanText(shortLink.description, title, 500);
 
   const media = getShortLinkSocialMedia(shortLink);
@@ -267,21 +268,25 @@ export function createShortLinkSocialHtml({
   const imageDimensions = getImageDimensions(shortLink);
 
   /*
-   * IMAGE mempertahankan generated preview ShortLink.
+   * IMAGE:
    *
-   * VIDEO tidak menggunakan generated preview sebagai media utama.
+   * Generated preview hanya menambahkan overlay.
+   * Canvas /preview mempunyai dimensi yang sama
+   * dengan thumbnail asli.
    */
-  const generatedImagePreviewUrl =
-    isImage && media.sourceImageUrl
-      ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
-      : null;
+  const validImage =
+    isImage &&
+    Boolean(media.sourceImageUrl) &&
+    Boolean(imageDimensions.width) &&
+    Boolean(imageDimensions.height);
+
+  const generatedImagePreviewUrl = validImage
+    ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
+    : null;
 
   /*
-   * VIDEO mengikuti pola Social Share lama:
-   *
-   * - Open Graph video langsung menuju file video asli.
-   * - Poster tetap disediakan untuk crawler/X sebagai fallback.
-   * - Tidak menggunakan intermediary /player.
+   * VIDEO belum menjadi fokus perubahan tahap ini.
+   * Logic sebelumnya dipertahankan.
    */
   const validVideo = isVideo && Boolean(media.videoUrl);
 
@@ -293,7 +298,7 @@ export function createShortLinkSocialHtml({
     ? normalizeDimension(shortLink.previewVideoHeight)
     : null;
 
-  const twitterImageUrl = validVideo ? media.sourceImageUrl : null;
+  const twitterVideoPosterUrl = validVideo ? media.sourceImageUrl : null;
 
   const tags = [
     meta("name", "robots", "noindex,follow"),
@@ -311,38 +316,40 @@ export function createShortLinkSocialHtml({
     meta("property", "og:url", normalizedCanonical),
 
     // ========================================================
-    // IMAGE PREVIEW
+    // IMAGE
+    //
+    // Tidak ada 1200x630.
+    // Tidak ada fixed aspect ratio.
+    //
+    // og:image width/height = dimensi thumbnail asli.
     // ========================================================
 
-    meta("property", "og:image", generatedImagePreviewUrl),
-
-    meta("property", "og:image:secure_url", generatedImagePreviewUrl),
+    meta("property", "og:image", validImage ? generatedImagePreviewUrl : null),
 
     meta(
       "property",
-      "og:image:type",
-      generatedImagePreviewUrl ? "image/png" : null,
+      "og:image:secure_url",
+      validImage ? generatedImagePreviewUrl : null,
     ),
+
+    meta("property", "og:image:type", validImage ? "image/png" : null),
 
     numberMeta(
       "property",
       "og:image:width",
-      generatedImagePreviewUrl ? imageDimensions.width : null,
+      validImage ? imageDimensions.width : null,
     ),
 
     numberMeta(
       "property",
       "og:image:height",
-      generatedImagePreviewUrl ? imageDimensions.height : null,
+      validImage ? imageDimensions.height : null,
     ),
 
-    meta("property", "og:image:alt", generatedImagePreviewUrl ? title : null),
+    meta("property", "og:image:alt", validImage ? title : null),
 
     // ========================================================
     // VIDEO
-    //
-    // Mengikuti pola Social Share lama.
-    // Source langsung = previewVideoUrl.
     // ========================================================
 
     meta("property", "og:video", validVideo ? media.videoUrl : null),
@@ -356,21 +363,38 @@ export function createShortLinkSocialHtml({
     numberMeta("property", "og:video:height", videoHeight),
 
     // ========================================================
-    // X / TWITTER
+    // X — IMAGE
     //
-    // Ini sengaja mengikuti Social Share lama:
+    // Sengaja TIDAK memaksakan summary_large_image.
     //
-    // twitter:card = player
-    // twitter:image = poster
+    // Kita hanya memberi X image + ukuran image asli.
+    // ========================================================
+
+    meta("name", "twitter:title", validImage ? title : null),
+
+    meta("name", "twitter:description", validImage ? description : null),
+
+    meta("name", "twitter:image", validImage ? generatedImagePreviewUrl : null),
+
+    meta("name", "twitter:image:alt", validImage ? title : null),
+
+    numberMeta(
+      "name",
+      "twitter:image:width",
+      validImage ? imageDimensions.width : null,
+    ),
+
+    numberMeta(
+      "name",
+      "twitter:image:height",
+      validImage ? imageDimensions.height : null,
+    ),
+
+    // ========================================================
+    // X — VIDEO
     //
-    // TIDAK membuat:
-    //
-    // twitter:player
-    // twitter:player:stream
-    // twitter:player:width
-    // twitter:player:height
-    //
-    // dan TIDAK bergantung pada /watch/[slug]/player.
+    // Dipertahankan sementara.
+    // VIDEO akan kita tangani setelah IMAGE selesai.
     // ========================================================
 
     meta("name", "twitter:card", validVideo ? "player" : null),
@@ -379,9 +403,9 @@ export function createShortLinkSocialHtml({
 
     meta("name", "twitter:description", validVideo ? description : null),
 
-    meta("name", "twitter:image", twitterImageUrl),
+    meta("name", "twitter:image", twitterVideoPosterUrl),
 
-    meta("name", "twitter:image:alt", twitterImageUrl ? title : null),
+    meta("name", "twitter:image:alt", twitterVideoPosterUrl ? title : null),
   ]
     .filter(Boolean)
     .join("\n");
