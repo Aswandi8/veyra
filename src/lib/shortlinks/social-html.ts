@@ -3,7 +3,6 @@ import type { PublicShortLink } from "@/lib/shortlinks/public-server";
 interface SocialHtmlOptions {
   shortLink: PublicShortLink;
   canonicalUrl: string;
-  crawlerName?: string | null;
 }
 
 export interface ShortLinkSocialMedia {
@@ -13,11 +12,14 @@ export interface ShortLinkSocialMedia {
   videoMimeType: string | null;
 }
 
-type SocialPlatform = "X" | "FACEBOOK" | "WHATSAPP" | "OTHER";
-
 interface PreviewDimensions {
   width: number | null;
   height: number | null;
+}
+
+interface PlayerDimensions {
+  width: number;
+  height: number;
 }
 
 function cleanText(
@@ -78,11 +80,14 @@ function getPreviewDimensions(shortLink: PublicShortLink): PreviewDimensions {
   if (thumbnailWidth && thumbnailHeight) {
     return {
       width: thumbnailWidth,
-
       height: thumbnailHeight,
     };
   }
 
+  /*
+   * Fallback khusus VIDEO apabila metadata poster
+   * belum tersedia tetapi dimensi video tersedia.
+   */
   if (shortLink.previewType === "VIDEO") {
     const videoWidth = normalizeDimension(shortLink.previewVideoWidth);
 
@@ -91,7 +96,6 @@ function getPreviewDimensions(shortLink: PublicShortLink): PreviewDimensions {
     if (videoWidth && videoHeight) {
       return {
         width: videoWidth,
-
         height: videoHeight,
       };
     }
@@ -100,6 +104,33 @@ function getPreviewDimensions(shortLink: PublicShortLink): PreviewDimensions {
   return {
     width: null,
     height: null,
+  };
+}
+
+function getPlayerDimensions(
+  shortLink: PublicShortLink,
+): PlayerDimensions | null {
+  if (shortLink.previewType !== "VIDEO") {
+    return null;
+  }
+
+  /*
+   * Untuk X Player Card kita TIDAK memakai
+   * dimensi thumbnail.
+   *
+   * Rasio player harus mengikuti video asli.
+   */
+  const width = normalizeDimension(shortLink.previewVideoWidth);
+
+  const height = normalizeDimension(shortLink.previewVideoHeight);
+
+  if (!width || !height) {
+    return null;
+  }
+
+  return {
+    width,
+    height,
   };
 }
 
@@ -185,34 +216,6 @@ function createCloudinarySocialJpeg(value: string): string {
   return url.toString();
 }
 
-function resolveSocialPlatform(
-  crawlerName: string | null | undefined,
-): SocialPlatform {
-  const normalized = crawlerName?.trim().toLowerCase() ?? "";
-
-  if (
-    normalized.includes("twitter") ||
-    normalized.includes("twitterbot") ||
-    normalized === "x"
-  ) {
-    return "X";
-  }
-
-  if (
-    normalized.includes("facebook") ||
-    normalized.includes("facebookexternalhit") ||
-    normalized.includes("facebot")
-  ) {
-    return "FACEBOOK";
-  }
-
-  if (normalized.includes("whatsapp")) {
-    return "WHATSAPP";
-  }
-
-  return "OTHER";
-}
-
 export function getShortLinkSocialMedia(
   shortLink: PublicShortLink,
 ): ShortLinkSocialMedia {
@@ -233,8 +236,11 @@ export function getShortLinkSocialMedia(
 
     sourceImageMimeType = "image/jpeg";
   } else if (isSvg) {
+    /*
+     * SVG non-Cloudinary tidak digunakan sebagai
+     * source social preview.
+     */
     sourceImageUrl = null;
-
     sourceImageMimeType = null;
   }
 
@@ -272,14 +278,15 @@ function meta(
 }
 
 function numberMeta(
-  property: string,
+  attribute: "property" | "name",
+  key: string,
   value: number | null | undefined,
 ): string {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return "";
   }
 
-  return meta("property", property, String(Math.round(value)));
+  return meta(attribute, key, String(Math.round(value)));
 }
 
 function getPreviewVersion(updatedAt: string): string {
@@ -303,10 +310,13 @@ function getGeneratedPreviewUrl(
   return `${base}/preview?v=${version}`;
 }
 
+function getPlayerUrl(canonicalUrl: string): string {
+  return `${canonicalUrl.replace(/\/+$/, "")}/player`;
+}
+
 export function createShortLinkSocialHtml({
   shortLink,
   canonicalUrl,
-  crawlerName,
 }: SocialHtmlOptions): string {
   const normalizedCanonical = normalizeHttpUrl(canonicalUrl) ?? canonicalUrl;
 
@@ -316,29 +326,43 @@ export function createShortLinkSocialHtml({
 
   const media = getShortLinkSocialMedia(shortLink);
 
-  const platform = resolveSocialPlatform(crawlerName);
+  const previewDimensions = getPreviewDimensions(shortLink);
 
-  const dimensions = getPreviewDimensions(shortLink);
+  const playerDimensions = getPlayerDimensions(shortLink);
 
   const generatedPreviewUrl = media.sourceImageUrl
     ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
     : null;
 
   /*
-   * X menggunakan generated image fallback untuk VIDEO.
+   * ==========================================================
+   * VIDEO
+   * ==========================================================
    *
-   * Platform OG lainnya tetap dapat menerima
-   * og:video + generated image fallback.
+   * X:
+   * twitter:card   = player
+   * twitter:player = /watch/[slug]/player
+   *
+   * Width/height selalu berasal dari dimensi VIDEO asli.
+   *
+   * Facebook / Open Graph:
+   * tetap mendapatkan og:video + og:image fallback.
    */
-  const exposeOpenGraphVideo =
-    shortLink.previewType === "VIDEO" &&
-    Boolean(media.videoUrl) &&
-    platform !== "X";
+  const validVideo =
+    shortLink.previewType === "VIDEO" && Boolean(media.videoUrl);
 
-  const ogType = exposeOpenGraphVideo ? "video.other" : "website";
+  const validPlayer = validVideo && Boolean(playerDimensions);
+
+  const playerUrl = validPlayer ? getPlayerUrl(normalizedCanonical) : null;
+
+  const ogType = validVideo ? "video.other" : "website";
 
   const tags = [
     meta("name", "robots", "noindex,follow"),
+
+    // ========================================================
+    // OPEN GRAPH
+    // ========================================================
 
     meta("property", "og:title", title),
 
@@ -348,71 +372,81 @@ export function createShortLinkSocialHtml({
 
     meta("property", "og:url", normalizedCanonical),
 
-    /*
-     * Generated preview.
-     *
-     * Dimensions sekarang mengikuti media asli.
-     */
+    // ========================================================
+    // IMAGE / POSTER FALLBACK
+    // ========================================================
+
     meta("property", "og:image", generatedPreviewUrl),
 
     meta("property", "og:image:secure_url", generatedPreviewUrl),
 
     meta("property", "og:image:type", generatedPreviewUrl ? "image/png" : null),
 
-    numberMeta("og:image:width", generatedPreviewUrl ? dimensions.width : null),
+    numberMeta(
+      "property",
+      "og:image:width",
+      generatedPreviewUrl ? previewDimensions.width : null,
+    ),
 
     numberMeta(
+      "property",
       "og:image:height",
-      generatedPreviewUrl ? dimensions.height : null,
+      generatedPreviewUrl ? previewDimensions.height : null,
     ),
 
     meta("property", "og:image:alt", generatedPreviewUrl ? title : null),
 
-    /*
-     * VIDEO metadata.
-     *
-     * X sengaja tidak menerima og:video.
-     */
-    meta("property", "og:video", exposeOpenGraphVideo ? media.videoUrl : null),
+    // ========================================================
+    // ORIGINAL VIDEO
+    // ========================================================
 
-    meta(
-      "property",
-      "og:video:secure_url",
-      exposeOpenGraphVideo ? media.videoUrl : null,
-    ),
+    meta("property", "og:video", validVideo ? media.videoUrl : null),
 
-    meta(
-      "property",
-      "og:video:type",
-      exposeOpenGraphVideo ? media.videoMimeType : null,
-    ),
+    meta("property", "og:video:secure_url", validVideo ? media.videoUrl : null),
+
+    meta("property", "og:video:type", validVideo ? media.videoMimeType : null),
 
     numberMeta(
+      "property",
       "og:video:width",
-      exposeOpenGraphVideo ? shortLink.previewVideoWidth : null,
+      validVideo ? shortLink.previewVideoWidth : null,
     ),
 
     numberMeta(
+      "property",
       "og:video:height",
-      exposeOpenGraphVideo ? shortLink.previewVideoHeight : null,
+      validVideo ? shortLink.previewVideoHeight : null,
     ),
 
+    // ========================================================
+    // X PLAYER CARD — VIDEO ONLY
+    // ========================================================
+
+    meta("name", "twitter:card", validPlayer ? "player" : null),
+
+    meta("name", "twitter:title", validPlayer ? title : null),
+
+    meta("name", "twitter:description", validPlayer ? description : null),
+
     /*
-     * X / Twitter image card.
+     * Poster fallback X.
+     *
+     * Generated preview memakai rasio media asli,
+     * bukan 1200×630.
      */
+    meta("name", "twitter:image", validPlayer ? generatedPreviewUrl : null),
+
     meta(
       "name",
-      "twitter:card",
-      generatedPreviewUrl ? "summary_large_image" : "summary",
+      "twitter:image:alt",
+      validPlayer && generatedPreviewUrl ? title : null,
     ),
 
-    meta("name", "twitter:title", title),
+    meta("name", "twitter:player", playerUrl),
 
-    meta("name", "twitter:description", description),
+    numberMeta("name", "twitter:player:width", playerDimensions?.width),
 
-    meta("name", "twitter:image", generatedPreviewUrl),
-
-    meta("name", "twitter:image:alt", generatedPreviewUrl ? title : null),
+    numberMeta("name", "twitter:player:height", playerDimensions?.height),
   ]
     .filter(Boolean)
     .join("\n");

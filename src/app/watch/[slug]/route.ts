@@ -18,6 +18,14 @@ function socialHtmlResponse(html: string, status = 200): Response {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
 
+      /*
+       * URL yang sama mempunyai dua behavior:
+       *
+       * social crawler → HTML metadata
+       * human          → redirect
+       *
+       * Jangan public-cache route ini.
+       */
       "Cache-Control": "no-store, no-cache, must-revalidate",
 
       "Referrer-Policy": "strict-origin-when-cross-origin",
@@ -95,6 +103,14 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   try {
+    /*
+     * Satu request Central API:
+     *
+     * - resolve ShortLink
+     * - classify visitor
+     * - tracking
+     * - return ShortLink payload untuk social crawler
+     */
     const tracking = await trackPublicShortLinkRequest(normalizedSlug, request);
 
     if (tracking.socialCrawler) {
@@ -116,20 +132,27 @@ export async function GET(request: Request, context: RouteContext) {
 
       const canonicalUrl = new URL(configuredUrl, request.url).toString();
 
-      return socialHtmlResponse(
-        createShortLinkSocialHtml({
-          shortLink,
-          canonicalUrl,
+      /*
+       * social-html menentukan:
+       *
+       * IMAGE
+       * → Open Graph image
+       *
+       * VIDEO
+       * → Open Graph video
+       * → X Player Card
+       */
+      const html = createShortLinkSocialHtml({
+        shortLink,
+        canonicalUrl,
+      });
 
-          /*
-           * Jangan classify UA di Veyra.
-           * Gunakan hasil Central API.
-           */
-          crawlerName: tracking.crawlerName,
-        }),
-      );
+      return socialHtmlResponse(html);
     }
 
+    /*
+     * HUMAN tetap langsung ke destination.
+     */
     return redirectResponse(tracking.destinationUrl);
   } catch (error) {
     if (error instanceof PublicShortLinkError) {
