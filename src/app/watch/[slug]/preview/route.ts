@@ -15,8 +15,64 @@ interface RouteContext {
   }>;
 }
 
-const WIDTH = 1200;
-const HEIGHT = 630;
+interface PreviewDimensions {
+  width: number;
+  height: number;
+}
+
+/*
+ * Defensive fallback untuk data lama yang tidak memiliki
+ * metadata dimensions.
+ *
+ * Data ShortLink baru seharusnya menggunakan ukuran
+ * thumbnail/poster asli.
+ */
+const FALLBACK_WIDTH = 1200;
+const FALLBACK_HEIGHT = 630;
+
+function normalizeDimension(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return Math.round(value);
+}
+
+function getPreviewDimensions(
+  thumbnailWidth: number | null | undefined,
+  thumbnailHeight: number | null | undefined,
+  videoWidth: number | null | undefined,
+  videoHeight: number | null | undefined,
+): PreviewDimensions {
+  const imageWidth = normalizeDimension(thumbnailWidth);
+
+  const imageHeight = normalizeDimension(thumbnailHeight);
+
+  if (imageWidth && imageHeight) {
+    return {
+      width: imageWidth,
+      height: imageHeight,
+    };
+  }
+
+  const normalizedVideoWidth = normalizeDimension(videoWidth);
+
+  const normalizedVideoHeight = normalizeDimension(videoHeight);
+
+  if (normalizedVideoWidth && normalizedVideoHeight) {
+    return {
+      width: normalizedVideoWidth,
+
+      height: normalizedVideoHeight,
+    };
+  }
+
+  return {
+    width: FALLBACK_WIDTH,
+
+    height: FALLBACK_HEIGHT,
+  };
+}
 
 function normalizeTitle(value: string | null): string {
   const normalized = value?.trim();
@@ -57,29 +113,24 @@ function getPreviewCacheControl(request: Request, updatedAt: string): string {
 
   const currentVersion = getVersion(updatedAt);
 
-  /*
-   * Versioned URL:
-   *
-   * /preview?v=<updatedAt>
-   *
-   * Aman di-cache sangat lama karena edit ShortLink
-   * menghasilkan updatedAt / URL baru.
-   */
   if (requestedVersion && requestedVersion === currentVersion) {
     return "public, max-age=31536000, s-maxage=31536000, immutable";
   }
 
-  /*
-   * Direct/unversioned preview tetap short-cache.
-   */
   return "public, max-age=60, s-maxage=300, stale-while-revalidate=3600";
 }
 
 export async function GET(request: Request, context: RouteContext) {
   const { slug } = await context.params;
 
+  const normalizedSlug = slug.trim().toLowerCase();
+
+  if (!normalizedSlug) {
+    return imageErrorResponse(404);
+  }
+
   try {
-    const shortLink = await getPublicShortLink(slug);
+    const shortLink = await getPublicShortLink(normalizedSlug);
 
     const media = getShortLinkSocialMedia(shortLink);
 
@@ -87,15 +138,26 @@ export async function GET(request: Request, context: RouteContext) {
       return imageErrorResponse(404);
     }
 
+    const dimensions = getPreviewDimensions(
+      shortLink.thumbnailWidth,
+      shortLink.thumbnailHeight,
+      shortLink.previewVideoWidth,
+      shortLink.previewVideoHeight,
+    );
+
     return new ImageResponse(
       ShortLinkSocialPreview({
         imageUrl: media.sourceImageUrl,
 
-        /*
-         * Overlay kiri bawah sekarang memakai
-         * title ShortLink, bukan hostname/domain.
-         */
         title: normalizeTitle(shortLink.title),
+
+        /*
+         * Renderer sekarang mengetahui ukuran canvas asli
+         * agar seluruh overlay dapat melakukan scaling.
+         */
+        width: dimensions.width,
+
+        height: dimensions.height,
 
         showPlayButton: shortLink.showPlayButton,
 
@@ -103,9 +165,9 @@ export async function GET(request: Request, context: RouteContext) {
       }),
 
       {
-        width: WIDTH,
+        width: dimensions.width,
 
-        height: HEIGHT,
+        height: dimensions.height,
 
         headers: {
           "Cache-Control": getPreviewCacheControl(request, shortLink.updatedAt),

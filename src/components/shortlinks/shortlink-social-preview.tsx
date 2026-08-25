@@ -3,17 +3,55 @@ import type { ReactElement } from "react";
 interface ShortLinkSocialPreviewProps {
   imageUrl: string;
   title: string;
+  width: number;
+  height: number;
   showPlayButton: boolean;
   displayDuration: string | null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
 }
 
 export function ShortLinkSocialPreview({
   imageUrl,
   title,
+  width,
+  height,
   showPlayButton,
   displayDuration,
 }: ShortLinkSocialPreviewProps): ReactElement {
   const normalizedTitle = title.trim() || "ShortLink";
+
+  /*
+   * Overlay mengikuti ukuran media asli.
+   *
+   * Sisi terpendek 720px = scale 1.
+   * Tidak bergantung pada landscape / portrait.
+   */
+  const shortSide = Math.min(width, height);
+
+  const scale = clamp(shortSide / 720, 0.6, 1.8);
+
+  const edge = Math.round(24 * scale);
+
+  const gap = Math.round(20 * scale);
+
+  const fontSize = Math.round(26 * scale);
+
+  const badgePaddingY = Math.round(8 * scale);
+
+  const badgePaddingX = Math.round(13 * scale);
+
+  const badgeRadius = Math.round(8 * scale);
+
+  const playSize = Math.round(96 * scale);
+
+  const playIconWidth = Math.round(40 * scale);
+
+  const playIconHeight = Math.round(48 * scale);
+
+  const playIconOffset = Math.round(6 * scale);
 
   return (
     <div
@@ -49,24 +87,26 @@ export function ShortLinkSocialPreview({
         >
           <div
             style={{
-              width: 116,
-              height: 116,
+              width: playSize,
+              height: playSize,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              borderRadius: 999,
+              borderRadius: 9999,
               background: "rgba(0,0,0,0.72)",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
+              boxShadow: `0 ${Math.round(6 * scale)}px ${Math.round(
+                24 * scale,
+              )}px rgba(0,0,0,0.35)`,
             }}
           >
             <svg
-              width="48"
-              height="56"
+              width={playIconWidth}
+              height={playIconHeight}
               viewBox="0 0 48 56"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
               style={{
-                marginLeft: 8,
+                marginLeft: playIconOffset,
               }}
             >
               <path d="M4 3L44 28L4 53V3Z" fill="white" />
@@ -78,17 +118,18 @@ export function ShortLinkSocialPreview({
       <div
         style={{
           position: "absolute",
-          left: 28,
-          right: 28,
-          bottom: 24,
+          left: edge,
+          right: edge,
+          bottom: edge,
           display: "flex",
           alignItems: "flex-end",
           justifyContent: "space-between",
-          gap: 24,
+          gap,
           pointerEvents: "none",
           fontFamily: "Arial, Helvetica, sans-serif",
-          fontSize: 28,
+          fontSize,
           fontWeight: 700,
+          lineHeight: 1.2,
           color: "#ffffff",
         }}
       >
@@ -100,10 +141,12 @@ export function ShortLinkSocialPreview({
             overflow: "hidden",
             whiteSpace: "nowrap",
             textOverflow: "ellipsis",
-            padding: "9px 14px",
-            borderRadius: 9,
+            padding: `${badgePaddingY}px ${badgePaddingX}px`,
+            borderRadius: badgeRadius,
             background: "rgba(0,0,0,0.78)",
-            textShadow: "0 1px 3px rgba(0,0,0,0.9)",
+            textShadow: `0 ${Math.max(1, Math.round(scale))}px ${Math.round(
+              3 * scale,
+            )}px rgba(0,0,0,0.9)`,
           }}
         >
           {normalizedTitle}
@@ -114,10 +157,12 @@ export function ShortLinkSocialPreview({
             style={{
               flexShrink: 0,
               display: "flex",
-              padding: "9px 14px",
-              borderRadius: 9,
+              padding: `${badgePaddingY}px ${badgePaddingX}px`,
+              borderRadius: badgeRadius,
               background: "rgba(0,0,0,0.82)",
-              textShadow: "0 1px 3px rgba(0,0,0,0.9)",
+              textShadow: `0 ${Math.max(1, Math.round(scale))}px ${Math.round(
+                3 * scale,
+              )}px rgba(0,0,0,0.9)`,
             }}
           >
             {displayDuration}
