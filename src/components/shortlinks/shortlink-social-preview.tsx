@@ -1,132 +1,210 @@
-import type { ReactElement } from "react";
+import { ImageResponse } from "next/og";
 
-interface ShortLinkSocialPreviewProps {
-  imageUrl: string;
-  title: string;
-  showPlayButton: boolean;
-  displayDuration: string | null;
+import { ShortLinkSocialPreview } from "@/components/shortlinks/shortlink-social-preview";
+import {
+  getPublicShortLink,
+  PublicShortLinkError,
+} from "@/lib/shortlinks/public-server";
+import { getShortLinkSocialMedia } from "@/lib/shortlinks/social-html";
+
+export const runtime = "nodejs";
+
+interface RouteContext {
+  params: Promise<{
+    slug: string;
+  }>;
 }
 
-export function ShortLinkSocialPreview({
-  imageUrl,
-  title,
-  showPlayButton,
-  displayDuration,
-}: ShortLinkSocialPreviewProps): ReactElement {
-  const normalizedTitle = title.trim() || "ShortLink";
+/*
+ * Digunakan hanya jika metadata media benar-benar tidak tersedia.
+ *
+ * Ini bukan lagi ukuran preview utama.
+ */
+const FALLBACK_WIDTH = 1200;
+const FALLBACK_HEIGHT = 630;
 
-  return (
-    <div
-      style={{
-        width: "100%",
-        height: "100%",
-        display: "flex",
-        position: "relative",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-        background: "#0a0a0a",
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={imageUrl}
-        alt=""
-        width={1200}
-        height={630}
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "contain",
-        }}
-      />
+interface PreviewDimensions {
+  width: number;
+  height: number;
+}
 
-      {showPlayButton ? (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <div
-            style={{
-              width: 116,
-              height: 116,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 999,
-              background: "rgba(0,0,0,0.72)",
-              boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
-            }}
-          >
-            <svg
-              width="48"
-              height="56"
-              viewBox="0 0 48 56"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              style={{
-                marginLeft: 8,
-              }}
-            >
-              <path d="M4 3L44 28L4 53V3Z" fill="white" />
-            </svg>
-          </div>
-        </div>
-      ) : null}
+function normalizeDimension(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
 
-      <div
-        style={{
-          position: "absolute",
-          left: 28,
-          right: 28,
-          bottom: 24,
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "space-between",
-          gap: 24,
-          fontFamily: "Arial, Helvetica, sans-serif",
-          fontSize: 28,
-          fontWeight: 700,
-          color: "white",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            minWidth: 0,
-            maxWidth: displayDuration ? "78%" : "100%",
-            padding: "9px 14px",
-            overflow: "hidden",
-            whiteSpace: "nowrap",
-            textOverflow: "ellipsis",
-            borderRadius: 9,
-            background: "rgba(0,0,0,0.78)",
-            textShadow: "0 1px 3px rgba(0,0,0,0.9)",
-          }}
-        >
-          {normalizedTitle}
-        </div>
+  return Math.round(value);
+}
 
-        {displayDuration ? (
-          <div
-            style={{
-              display: "flex",
-              flexShrink: 0,
-              padding: "9px 14px",
-              borderRadius: 9,
-              background: "rgba(0,0,0,0.82)",
-              textShadow: "0 1px 3px rgba(0,0,0,0.9)",
-            }}
-          >
-            {displayDuration}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
+function getPreviewDimensions(
+  thumbnailWidth: number | null | undefined,
+  thumbnailHeight: number | null | undefined,
+  videoWidth: number | null | undefined,
+  videoHeight: number | null | undefined,
+): PreviewDimensions {
+  /*
+   * Generated preview memakai thumbnail sebagai visual source.
+   *
+   * Karena itu dimensi thumbnail adalah sumber utama.
+   */
+  const imageWidth = normalizeDimension(thumbnailWidth);
+
+  const imageHeight = normalizeDimension(thumbnailHeight);
+
+  if (imageWidth && imageHeight) {
+    return {
+      width: imageWidth,
+      height: imageHeight,
+    };
+  }
+
+  /*
+   * VIDEO fallback.
+   *
+   * Jika metadata thumbnail lama belum mempunyai dimensions,
+   * gunakan dimensions video.
+   */
+  const normalizedVideoWidth = normalizeDimension(videoWidth);
+
+  const normalizedVideoHeight = normalizeDimension(videoHeight);
+
+  if (normalizedVideoWidth && normalizedVideoHeight) {
+    return {
+      width: normalizedVideoWidth,
+
+      height: normalizedVideoHeight,
+    };
+  }
+
+  /*
+   * Defensive fallback untuk data lama/corrupt.
+   *
+   * Data baru idealnya tidak pernah sampai sini karena
+   * thumbnailWidth + thumbnailHeight sudah tersedia.
+   */
+  return {
+    width: FALLBACK_WIDTH,
+    height: FALLBACK_HEIGHT,
+  };
+}
+
+function normalizeTitle(value: string | null): string {
+  const normalized = value?.trim();
+
+  return normalized ? normalized.slice(0, 120) : "ShortLink";
+}
+
+function normalizeDuration(value: string | null): string | null {
+  const normalized = value?.trim();
+
+  return normalized ? normalized.slice(0, 12) : null;
+}
+
+function getVersion(updatedAt: string): string {
+  const timestamp = new Date(updatedAt).getTime();
+
+  if (Number.isFinite(timestamp)) {
+    return String(timestamp);
+  }
+
+  return updatedAt;
+}
+
+function imageErrorResponse(status: number): Response {
+  return new Response("Preview unavailable", {
+    status,
+
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+function getPreviewCacheControl(request: Request, updatedAt: string): string {
+  const requestUrl = new URL(request.url);
+
+  const requestedVersion = requestUrl.searchParams.get("v");
+
+  const currentVersion = getVersion(updatedAt);
+
+  /*
+   * Versioned preview:
+   *
+   * /preview?v=<updatedAt>
+   *
+   * URL berubah setiap ShortLink berubah,
+   * sehingga aman menggunakan immutable cache.
+   */
+  if (requestedVersion && requestedVersion === currentVersion) {
+    return "public, max-age=31536000, s-maxage=31536000, immutable";
+  }
+
+  /*
+   * Unversioned preview tetap short-cache.
+   */
+  return "public, max-age=60, s-maxage=300, stale-while-revalidate=3600";
+}
+
+export async function GET(request: Request, context: RouteContext) {
+  const { slug } = await context.params;
+
+  const normalizedSlug = slug.trim().toLowerCase();
+
+  if (!normalizedSlug) {
+    return imageErrorResponse(404);
+  }
+
+  try {
+    const shortLink = await getPublicShortLink(normalizedSlug);
+
+    const media = getShortLinkSocialMedia(shortLink);
+
+    if (!media.sourceImageUrl) {
+      return imageErrorResponse(404);
+    }
+
+    /*
+     * Tidak ada lagi fixed social canvas 1200 × 630.
+     *
+     * Preview mengikuti dimensions media asli.
+     */
+    const dimensions = getPreviewDimensions(
+      shortLink.thumbnailWidth,
+      shortLink.thumbnailHeight,
+      shortLink.previewVideoWidth,
+      shortLink.previewVideoHeight,
+    );
+
+    return new ImageResponse(
+      ShortLinkSocialPreview({
+        imageUrl: media.sourceImageUrl,
+
+        title: normalizeTitle(shortLink.title),
+
+        showPlayButton: shortLink.showPlayButton,
+
+        displayDuration: normalizeDuration(shortLink.displayDuration),
+      }),
+
+      {
+        width: dimensions.width,
+
+        height: dimensions.height,
+
+        headers: {
+          "Cache-Control": getPreviewCacheControl(request, shortLink.updatedAt),
+        },
+      },
+    );
+  } catch (error) {
+    if (error instanceof PublicShortLinkError) {
+      if (error.status === 404 || error.status === 410) {
+        return imageErrorResponse(error.status);
+      }
+    }
+
+    console.error("[SHORTLINK SOCIAL PREVIEW]", error);
+
+    return imageErrorResponse(500);
+  }
 }

@@ -15,6 +15,11 @@ export interface ShortLinkSocialMedia {
 
 type SocialPlatform = "X" | "FACEBOOK" | "WHATSAPP" | "OTHER";
 
+interface PreviewDimensions {
+  width: number | null;
+  height: number | null;
+}
+
 function cleanText(
   value: string | null | undefined,
   fallback: string,
@@ -55,6 +60,47 @@ function normalizeHttpUrl(value: string | null | undefined): string | null {
   } catch {
     return null;
   }
+}
+
+function normalizeDimension(value: number | null | undefined): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return Math.round(value);
+}
+
+function getPreviewDimensions(shortLink: PublicShortLink): PreviewDimensions {
+  const thumbnailWidth = normalizeDimension(shortLink.thumbnailWidth);
+
+  const thumbnailHeight = normalizeDimension(shortLink.thumbnailHeight);
+
+  if (thumbnailWidth && thumbnailHeight) {
+    return {
+      width: thumbnailWidth,
+
+      height: thumbnailHeight,
+    };
+  }
+
+  if (shortLink.previewType === "VIDEO") {
+    const videoWidth = normalizeDimension(shortLink.previewVideoWidth);
+
+    const videoHeight = normalizeDimension(shortLink.previewVideoHeight);
+
+    if (videoWidth && videoHeight) {
+      return {
+        width: videoWidth,
+
+        height: videoHeight,
+      };
+    }
+  }
+
+  return {
+    width: null,
+    height: null,
+  };
 }
 
 function getExtension(value: string | null): string | null {
@@ -188,6 +234,7 @@ export function getShortLinkSocialMedia(
     sourceImageMimeType = "image/jpeg";
   } else if (isSvg) {
     sourceImageUrl = null;
+
     sourceImageMimeType = null;
   }
 
@@ -224,12 +271,15 @@ function meta(
   )}">`;
 }
 
-function numberMeta(property: string, value: number | null): string {
-  if (value === null || !Number.isFinite(value) || value <= 0) {
+function numberMeta(
+  property: string,
+  value: number | null | undefined,
+): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     return "";
   }
 
-  return meta("property", property, String(value));
+  return meta("property", property, String(Math.round(value)));
 }
 
 function getPreviewVersion(updatedAt: string): string {
@@ -268,16 +318,17 @@ export function createShortLinkSocialHtml({
 
   const platform = resolveSocialPlatform(crawlerName);
 
+  const dimensions = getPreviewDimensions(shortLink);
+
   const generatedPreviewUrl = media.sourceImageUrl
     ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
     : null;
 
   /*
-   * X:
-   * VIDEO dipresentasikan sebagai generated image card.
+   * X menggunakan generated image fallback untuk VIDEO.
    *
-   * Facebook / WhatsApp / crawler lain:
-   * VIDEO tetap mendapat og:video + poster fallback.
+   * Platform OG lainnya tetap dapat menerima
+   * og:video + generated image fallback.
    */
   const exposeOpenGraphVideo =
     shortLink.previewType === "VIDEO" &&
@@ -297,18 +348,31 @@ export function createShortLinkSocialHtml({
 
     meta("property", "og:url", normalizedCanonical),
 
+    /*
+     * Generated preview.
+     *
+     * Dimensions sekarang mengikuti media asli.
+     */
     meta("property", "og:image", generatedPreviewUrl),
 
     meta("property", "og:image:secure_url", generatedPreviewUrl),
 
     meta("property", "og:image:type", generatedPreviewUrl ? "image/png" : null),
 
-    numberMeta("og:image:width", generatedPreviewUrl ? 1200 : null),
+    numberMeta("og:image:width", generatedPreviewUrl ? dimensions.width : null),
 
-    numberMeta("og:image:height", generatedPreviewUrl ? 630 : null),
+    numberMeta(
+      "og:image:height",
+      generatedPreviewUrl ? dimensions.height : null,
+    ),
 
     meta("property", "og:image:alt", generatedPreviewUrl ? title : null),
 
+    /*
+     * VIDEO metadata.
+     *
+     * X sengaja tidak menerima og:video.
+     */
     meta("property", "og:video", exposeOpenGraphVideo ? media.videoUrl : null),
 
     meta(
@@ -333,6 +397,9 @@ export function createShortLinkSocialHtml({
       exposeOpenGraphVideo ? shortLink.previewVideoHeight : null,
     ),
 
+    /*
+     * X / Twitter image card.
+     */
     meta(
       "name",
       "twitter:card",
