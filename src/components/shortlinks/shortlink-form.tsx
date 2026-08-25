@@ -212,6 +212,31 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
     videoMetadata?.url === currentVideoUrl ? videoMetadata : null;
 
   async function onSubmit(values: ShortLinkFormValues) {
+    /*
+     * VIDEO wajib memiliki metadata dimensi asli sebelum disimpan.
+     *
+     * Kita tidak menggunakan fallback ratio/dimensi.
+     * Width dan height harus berasal langsung dari metadata
+     * file video yang dibaca oleh ShortLinkPreviewCard.
+     */
+    if (values.previewType === "VIDEO") {
+      const submittedVideoUrl = values.previewVideoUrl?.trim() || "";
+
+      if (
+        !submittedVideoUrl ||
+        !activeVideoMetadata ||
+        activeVideoMetadata.url !== submittedVideoUrl ||
+        activeVideoMetadata.width <= 0 ||
+        activeVideoMetadata.height <= 0
+      ) {
+        toast.error(
+          "Video metadata is not ready. Wait until the original video dimensions are detected.",
+        );
+
+        return;
+      }
+    }
+
     const payload = {
       slug: values.slug.trim(),
 
@@ -226,8 +251,10 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
       description: values.description?.trim() || null,
 
       /*
-       * IMAGE dan VIDEO sama-sama wajib
-       * mempunyai image/poster.
+       * IMAGE dan VIDEO sama-sama mempunyai image/poster.
+       *
+       * Dimensi image berasal dari naturalWidth/naturalHeight
+       * image asli yang berhasil dimuat browser.
        */
       thumbnailUrl: values.thumbnailUrl?.trim() || null,
 
@@ -236,8 +263,15 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
       thumbnailHeight: activeImageMetadata?.height ?? null,
 
       /*
-       * Hanya VIDEO yang mengirim video fields.
-       * IMAGE selalu membersihkannya.
+       * VIDEO fields hanya dikirim untuk previewType VIDEO.
+       *
+       * Width/height berasal dari:
+       *
+       * video.videoWidth
+       * video.videoHeight
+       *
+       * Tidak ada hardcode portrait, landscape, square,
+       * 16:9, 720x1280, atau ukuran lainnya.
        */
       previewVideoUrl:
         values.previewType === "VIDEO"
@@ -560,7 +594,7 @@ export function ShortLinkForm({ mode, shortLink }: ShortLinkFormProps) {
                     </TypographyMuted>
                   ) : (
                     <TypographyMuted>
-                      Use a public direct video URL.
+                      Reading original video dimensions...
                     </TypographyMuted>
                   )}
                 </div>
