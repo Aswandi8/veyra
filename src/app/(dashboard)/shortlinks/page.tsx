@@ -108,11 +108,6 @@ export default async function ShortLinksPage({
             : undefined
         }
       />
-
-      {analyticsResponse.success && analyticsResponse.data ? (
-        <GlobalShortLinkAnalytics analytics={analyticsResponse.data} />
-      ) : null}
-
       <Card className="shadow-none">
         <CardContent>
           <DataTableProvider>
@@ -152,6 +147,10 @@ export default async function ShortLinksPage({
           </DataTableProvider>
         </CardContent>
       </Card>
+
+      {analyticsResponse.success && analyticsResponse.data ? (
+        <GlobalShortLinkAnalytics analytics={analyticsResponse.data} />
+      ) : null}
     </div>
   );
 }
