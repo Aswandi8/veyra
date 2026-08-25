@@ -84,10 +84,6 @@ function getPreviewDimensions(shortLink: PublicShortLink): PreviewDimensions {
     };
   }
 
-  /*
-   * Fallback khusus VIDEO apabila metadata poster
-   * belum tersedia tetapi dimensi video tersedia.
-   */
   if (shortLink.previewType === "VIDEO") {
     const videoWidth = normalizeDimension(shortLink.previewVideoWidth);
 
@@ -114,12 +110,6 @@ function getPlayerDimensions(
     return null;
   }
 
-  /*
-   * Untuk X Player Card kita TIDAK memakai
-   * dimensi thumbnail.
-   *
-   * Rasio player harus mengikuti video asli.
-   */
   const width = normalizeDimension(shortLink.previewVideoWidth);
 
   const height = normalizeDimension(shortLink.previewVideoHeight);
@@ -236,10 +226,6 @@ export function getShortLinkSocialMedia(
 
     sourceImageMimeType = "image/jpeg";
   } else if (isSvg) {
-    /*
-     * SVG non-Cloudinary tidak digunakan sebagai
-     * source social preview.
-     */
     sourceImageUrl = null;
     sourceImageMimeType = null;
   }
@@ -334,20 +320,6 @@ export function createShortLinkSocialHtml({
     ? getGeneratedPreviewUrl(normalizedCanonical, shortLink.updatedAt)
     : null;
 
-  /*
-   * ==========================================================
-   * VIDEO
-   * ==========================================================
-   *
-   * X:
-   * twitter:card   = player
-   * twitter:player = /watch/[slug]/player
-   *
-   * Width/height selalu berasal dari dimensi VIDEO asli.
-   *
-   * Facebook / Open Graph:
-   * tetap mendapatkan og:video + og:image fallback.
-   */
   const validVideo =
     shortLink.previewType === "VIDEO" && Boolean(media.videoUrl);
 
@@ -357,11 +329,21 @@ export function createShortLinkSocialHtml({
 
   const ogType = validVideo ? "video.other" : "website";
 
+  /*
+   * Untuk VIDEO X Player Card:
+   *
+   * twitter:image langsung memakai poster/source image asli.
+   *
+   * Jangan gunakan generatedPreviewUrl karena kita ingin
+   * fallback poster X tetap identik dengan source media.
+   */
+  const twitterImageUrl = validPlayer ? media.sourceImageUrl : null;
+
   const tags = [
     meta("name", "robots", "noindex,follow"),
 
     // ========================================================
-    // OPEN GRAPH
+    // OPEN GRAPH CORE
     // ========================================================
 
     meta("property", "og:title", title),
@@ -373,7 +355,9 @@ export function createShortLinkSocialHtml({
     meta("property", "og:url", normalizedCanonical),
 
     // ========================================================
-    // IMAGE / POSTER FALLBACK
+    // OPEN GRAPH IMAGE FALLBACK
+    //
+    // Tetap memakai generated preview.
     // ========================================================
 
     meta("property", "og:image", generatedPreviewUrl),
@@ -429,18 +413,16 @@ export function createShortLinkSocialHtml({
     meta("name", "twitter:description", validPlayer ? description : null),
 
     /*
-     * Poster fallback X.
+     * Penting:
      *
-     * Generated preview memakai rasio media asli,
-     * bukan 1200×630.
+     * X fallback poster langsung ke image asli.
+     *
+     * Contoh:
+     * https://res.cloudinary.com/.../IMG_4760_xyl1yd.jpg
      */
-    meta("name", "twitter:image", validPlayer ? generatedPreviewUrl : null),
+    meta("name", "twitter:image", twitterImageUrl),
 
-    meta(
-      "name",
-      "twitter:image:alt",
-      validPlayer && generatedPreviewUrl ? title : null,
-    ),
+    meta("name", "twitter:image:alt", twitterImageUrl ? title : null),
 
     meta("name", "twitter:player", playerUrl),
 
